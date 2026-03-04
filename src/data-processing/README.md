@@ -1,32 +1,35 @@
 # SafeNet Data Pipeline
 
-Replicates the SafeNet paper's feature engineering: raw earthquake catalog → 282-feature pickle for the model.
+Replicates the [SafeNet paper](https://www.nature.com/articles/s41598-025-93877-7)'s feature engineering: raw earthquake catalog → 282-feature pickle + labeled ground truth.
 
 ## Quick Start
 
 ```bash
-python3 split_data.py    # Split raw data into training/testing CSVs
-python3 pipeline.py      # Generate training_output.pickle & testing_output.pickle
-python3 validate.py      # Compare testing_output against reference pickle
+python3 split_data.py                # Split raw data into training/testing CSVs
+python3 pipeline.py                  # Generate feature pickles + label pickles
+python3 validate.py                  # Validate features against reference
+python3 validate_labeled_data.py     # Validate labels against reference (100% match ✓)
 ```
 
 ## Pipeline Overview
 
 ```
 data/1970-2021_11_EARTH_final_with_patchnum.csv
-        │
-        ├── split_data.py
-        │       ├── data/training_data.csv  (1970-2010)
-        │       └── data/testing_data.csv   (2002-2021)
-        │
-        └── pipeline.py
-                ├── data/training_output.pickle  (target years 1970-2010)
-                └── data/testing_output.pickle   (target years 2011-2020)
+    │
+    ├─ split_data.py
+    │   ├─ data/training_data.csv       (1970–2010)
+    │   └─ data/testing_data.csv        (2002–2021)
+    │
+    └─ pipeline.py
+        ├─ data/training_output.pickle  (features: target years 1979–2010)
+        ├─ data/training_labels.pickle  (labels:   1980–2011)
+        ├─ data/testing_output.pickle   (features: target years 2011–2020)
+        └─ data/testing_labels.pickle   (labels:   2012–2021)
 ```
 
 ## Feature Engineering (282 columns)
 
-Each feature vector describes seismic activity within a **12-month window** ending Nov 16 of year Y (Nov 17 Y-1 → Nov 16 Y) following [SafeNet's catalog indicators](https://www.nature.com/articles/s41598-025-93877-7/tables/1)
+Each feature vector covers a **12-month sliding window** (Nov 17 Y-1 → Nov 16 Y), following [SafeNet's catalog indicators](https://www.nature.com/articles/s41598-025-93877-7/tables/1).
 
 | Columns | Count | Description |
 |---------|-------|-------------|
@@ -48,19 +51,34 @@ Each feature vector describes seismic activity within a **12-month window** endi
 
 ## Output Structure
 
-Each pickle contains:
-- `eq_data`: list of arrays, one per target year, each shaped `(10, 86, 282)`
-  - **10** = history years (Y-9 to Y)
-  - **86** = patch 0 (general map) + patches 1-85 (individual regions from `png_list_to_patchxy.csv`)
-  - **282** = normalized features (float32, min-max scaled to [0,1])
-- `png`: placeholder (empty list)
+Each feature pickle contains:
 
-## Normalization
+- **`eq_data`**: list of arrays, one per target year, each `(10, 86, 282)`
+  - `10` — history years (Y-9 to Y)
+  - `86` — patch 0 (general map) + patches 1–85 (regions via `png_list_to_patchxy.csv`)
+  - `282` — min-max normalized features (float32, [0,1])
+- **`png`**: placeholder (empty list)
 
-Per-column min-max normalization computed globally across **all regions and all years** in the dataset:
-
+Normalization is per-column min-max across all regions and years:
 ```
 normalized = (value - col_min) / (col_max - col_min)
 ```
+Parameters saved to `*_norm_params.json`.
 
-Parameters are saved to `*_norm_params.json` alongside each pickle.
+## Labels (Ground Truth)
+
+Features at year X predict the earthquake magnitude class at year **X+1**.
+
+| Class | Magnitude Range |
+|-------|----------------|
+| 0 | 0 ≤ M < 5 |
+| 1 | 5 ≤ M < 6 |
+| 2 | 6 ≤ M < 7 |
+| 3 | M ≥ 7 |
+
+Each label pickle contains a list of `(85,)` int arrays — one class per patch per year.
+
+| Dataset | Feature Years | Label Years |
+|---------|--------------|-------------|
+| Training | 1979–2010 | 1980–2011 |
+| Testing | 2011–2020 | 2012–2021 |

@@ -8,12 +8,12 @@ def main():
     
     years = df['onlydate'].str[:4].astype(int)
     
-    #Training dataset
+    #Training dataset, will generate feature-engineered data for 1979 - 2010
     filtered_df = df[(years >= 1970) & (years <= 2010)]
     print(f"Saving training dataset ({len(filtered_df)} rows)...")
     filtered_df.to_csv("data/training_data.csv", index=False)
 
-    #Validation dataset
+    #Validation dataset, will generate feature-engineered data for 2011 - 2021
     filtered_df = df[(years >= 2002) & (years <= 2021)]
     print(f"Saving testing dataset ({len(filtered_df)} rows)...")
     filtered_df.to_csv("data/testing_data.csv", index=False)

@@ -506,6 +506,91 @@ def build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years=Non
     return eq_data
 
 
+def mag_to_class(max_mag):
+    """Convert a maximum magnitude to its earthquake class.
+    Class 0: 0 <= M < 5
+    Class 1: 5 <= M < 6
+    Class 2: 6 <= M < 7
+    Class 3: M >= 7
+    """
+    if max_mag >= 7:
+        return 3
+    if max_mag >= 6:
+        return 2
+    if max_mag >= 5:
+        return 1
+    return 0
+
+
+def build_labels(raw_csv, patch_csv, output_pickle, target_years):
+    """
+    Build ground truth labels for each target year.
+
+    For eq_data at target year X, the label is the earthquake magnitude
+    class observed in year X+1 (the year being predicted).
+
+    Each label entry is an array of 85 integers (one class per patch,
+    excluding patch 0 / general map).
+
+    Args:
+        raw_csv: Path to the raw earthquake CSV
+        patch_csv: Path to png_list_to_patchxy.csv
+        output_pickle: Output pickle path for labels
+        target_years: List of feature target years (labels will be for target_year + 1)
+    """
+    print(f"\n{'='*60}")
+    print(f"Building labels for {len(target_years)} target years")
+    print(f"Feature years: {min(target_years)}-{max(target_years)}")
+    print(f"Label years:   {min(target_years)+1}-{max(target_years)+1}")
+    print(f"{'='*60}")
+
+    # Load raw data (only need magnitude, date, region)
+    print(f"Loading {raw_csv}...")
+    df = pd.read_csv(raw_csv, usecols=['magnitude', 'onlydate', 'region'])
+    df['_onlydate_dt'] = pd.to_datetime(df['onlydate'])
+
+    # Load region mapping
+    regions = load_region_mapping(patch_csv)
+    print(f"Loaded {len(regions)} regions")
+
+    # Pre-group by region for fast lookup
+    print("Pre-grouping by region...")
+    region_groups = {}
+    for region_str in regions:
+        rdf = df[df['region'] == region_str][['magnitude', '_onlydate_dt']]
+        region_groups[region_str] = rdf
+
+    labels = []
+    for target_yr in target_years:
+        label_yr = target_yr + 1  # predict the NEXT year
+
+        # Label window: Nov 17 of label_yr-1 to Nov 16 of label_yr
+        window_start = pd.Timestamp(year=label_yr - 1, month=11, day=17)
+        window_end = pd.Timestamp(year=label_yr, month=11, day=16)
+
+        year_labels = np.zeros(85, dtype=np.int64)
+
+        # Patches 0-84: individual regions (fast lookup via pre-grouped data)
+        for r_idx, region_str in enumerate(regions):
+            rdf = region_groups[region_str]
+            mask = (rdf['_onlydate_dt'] >= window_start) & (rdf['_onlydate_dt'] <= window_end)
+            max_mag = rdf.loc[mask, 'magnitude'].max() if mask.sum() > 0 else 0.0
+            year_labels[r_idx] = mag_to_class(max_mag)
+
+        labels.append(year_labels)
+        dist = {c: int((year_labels == c).sum()) for c in range(4)}
+
+        #Print output map e.g Label year 2019 {0: 63, 1: 19, 2: 4, 3: 0}
+        print(f"  Label year {label_yr} (target {target_yr}): {dist}")
+
+    # Save
+    with open(output_pickle, 'wb') as f:
+        pickle.dump(labels, f)
+    print(f"Saved labels to {output_pickle}")
+
+    return labels
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # CLI
 # ═══════════════════════════════════════════════════════════════════════
@@ -514,8 +599,8 @@ if __name__ == '__main__':
     raw_csv = 'data/training_data.csv'
     patch_csv = 'data/png_list_to_patchxy.csv'
     output_pickle = 'data/training_output.pickle'
-    norm_start = 1970
-    target_years = list(range(1970, 2011)) #1970 - 2010
+    norm_start = 1971  # earliest year with a full window in the data
+    target_years = list(range(1979, 2011)) #1979 - 2010
 
     # Check files exist
     for f in [raw_csv, patch_csv]:
@@ -524,11 +609,13 @@ if __name__ == '__main__':
             sys.exit(1)
 
     build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years)
+    build_labels('data/training_data.csv', patch_csv,
+                 'data/training_labels.pickle', target_years)
 
     raw_csv = 'data/testing_data.csv'
     patch_csv = 'data/png_list_to_patchxy.csv'
     output_pickle = 'data/testing_output.pickle' #this is what needs to match eqs_and_png.pickle
-    norm_start = 2002
+    norm_start = 2002 # earliest year with a full window in the data
     target_years = list(range(2011, 2021)) #2011 - 2020
 
     # Check files exist
@@ -538,4 +625,5 @@ if __name__ == '__main__':
             sys.exit(1)
 
     build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years)
-
+    build_labels('data/testing_data.csv', patch_csv,
+                 'data/testing_labels.pickle', target_years)

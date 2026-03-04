@@ -7,6 +7,6 @@ Doing pure AI slop (goated)
 
 ### Local requirements:
 
-Python 3.13.12
+Python 3.12.x, and [https://docs.astral.sh/uv/](uv) installed on your computer.
 
-And run `pip install -r requirements.txt`
+Run `uv sync` to sync the dependencies.

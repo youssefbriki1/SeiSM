@@ -1,4 +1,5 @@
 import argparse
+import os
 import pickle
 from pathlib import Path
 import torch
@@ -54,6 +55,17 @@ def ensure_readable_file(path: Path, label: str, required: bool = True) -> bool:
             "Run `git lfs pull` to fetch actual dataset files."
         )
     return True
+
+
+def configure_hf_cache():
+    transformers_cache = os.environ.get("TRANSFORMERS_CACHE")
+    if transformers_cache and not os.access(transformers_cache, os.W_OK):
+        os.environ.pop("TRANSFORMERS_CACHE", None)
+
+    if "HF_HOME" not in os.environ:
+        hf_home = PROJECT_ROOT / ".cache" / "huggingface"
+        hf_home.mkdir(parents=True, exist_ok=True)
+        os.environ["HF_HOME"] = str(hf_home)
 
 
 def parse_mag_bins(bins_str: str) -> list[float]:
@@ -161,6 +173,8 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, desc:
 
 
 def train(args):
+    configure_hf_cache()
+
     # --- Setup & Device ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -277,9 +291,11 @@ def train(args):
     model = QuakeMamba2(
         d_model=args.d_model,
         d_state=args.d_state,
+        headdim=args.mamba_headdim,
         input_dim=num_patches * num_features,
         num_classes=args.num_classes,
         num_patches=num_patches,
+        use_mem_eff_path=args.mamba_use_mem_eff_path,
     ).to(device)
     num_classes = args.num_classes
 
@@ -514,7 +530,13 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
     parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")
     parser.add_argument("--d_state", type=int, default=16, help="Mamba state dimension")
+    parser.add_argument("--mamba_headdim", type=int, default=32, help="Mamba head dimension (default 32 avoids stride issues)")
     parser.add_argument("--num_classes", type=int, default=4, help="Number of classification classes")
+    parser.add_argument(
+        "--mamba_use_mem_eff_path",
+        action="store_true",
+        help="Enable Mamba2 memory-efficient fused path (may fail on stride constraints on some setups)",
+    )
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")

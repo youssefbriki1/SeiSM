@@ -151,8 +151,8 @@ def compute_282_features(events_year, events_before, extraction_date):
         base = 130 + (m-1)*4
         features[base]     = ((mag >= 0) & (mag <= 3)).sum()
         features[base + 1] = ((mag > 3) & (mag <= 5)).sum()
-        features[base + 2] = ((mag > 5) & (mag <= 7)).sum()
-        features[base + 3] = (mag > 7).sum()  # >7 to avoid double-counting with bin 3
+        features[base + 2] = ((mag > 5) & (mag < 7)).sum()
+        features[base + 3] = (mag >= 7).sum()
 
     # ───────────────────────────────────────────────────────────────────
     # Cols 178-201: Depth counts per month (2 bins × 12 months)

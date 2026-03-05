@@ -469,6 +469,7 @@ def train(args):
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
+                """
                 if test_metrics is not None:
                     log_payload.update(
                         {
@@ -480,6 +481,7 @@ def train(args):
                             "test/recall": test_metrics["recall"],
                         }
                     )
+                """
                 wandb.log(log_payload, step=global_step)
             
             if val_f1 > best_val_f1:

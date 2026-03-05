@@ -148,8 +148,12 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, desc:
             x, y = x.to(device), y.to(device)
 
             logits = model(x)
-            logits_flat = logits.view(-1, num_classes)
-            y_flat = y.view(-1)
+
+            #trim the first element (the general patch)
+            num_label_patches = y.shape[-1]
+            logits = logits[:, -num_label_patches:, :]
+            logits_flat = logits.reshape(-1, num_classes)
+            y_flat = y.reshape(-1)
 
             loss = criterion(logits_flat, y_flat)
             split_loss += loss.item()
@@ -385,8 +389,12 @@ def train(args):
                 optimizer.zero_grad()
                 
                 logits = model(x)
-                logits_flat = logits.view(-1, num_classes)
-                y_flat = y.view(-1)
+
+                # trim first patch (general map)
+                num_label_patches = y.shape[-1]
+                logits = logits[:, -num_label_patches:, :]
+                logits_flat = logits.reshape(-1, num_classes)
+                y_flat = y.reshape(-1)
                 
                 loss = criterion(logits_flat, y_flat)
                 loss.backward()

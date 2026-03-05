@@ -21,6 +21,7 @@ MAIN_PY=$PROJECT_ROOT/src/main.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 
 mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"
+mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 
 # ---- Disable Python environment variables injected by CVMFS ----
 unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
@@ -30,6 +31,8 @@ export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 # ---- Set WandB log directory under $SCRATCH ----
 export WANDB_DIR=$PROJECT_ROOT/wandb
 export WANDB_MODE=offline
+unset TRANSFORMERS_CACHE
+export HF_HOME=$PROJECT_ROOT/.cache/huggingface
 
 echo "[run.sh] Using: $VENV_PY"
 $VENV_PY -V

@@ -494,7 +494,11 @@ def train(args):
             
             if val_f1 > best_val_f1:
                 best_val_f1 = val_f1
-                torch.save(model.state_dict(), save_path)
+                import tempfile, shutil
+                tmp_fd, tmp_path = tempfile.mkstemp(dir=save_path.parent, suffix=".tmp")
+                os.close(tmp_fd)
+                torch.save(model.state_dict(), tmp_path)
+                shutil.move(tmp_path, save_path)
                 print(f"*** New best model saved to {save_path} with F1: {best_val_f1:.4f} ***")
 
                 if wandb is not None:

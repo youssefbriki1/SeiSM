@@ -535,10 +535,10 @@ if __name__ == "__main__":
     
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training and validation")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
-    parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")
+    parser.add_argument("--d_model", type=int, default=1024, help="Model hidden dimension")
     parser.add_argument("--d_state", type=int, default=16, help="Mamba state dimension")
     parser.add_argument("--mamba_headdim", type=int, default=32, help="Mamba head dimension (default 32 avoids stride issues)")
     parser.add_argument("--num_classes", type=int, default=4, help="Number of classification classes")

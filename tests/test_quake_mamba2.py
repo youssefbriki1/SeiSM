@@ -62,8 +62,12 @@ def test_quake_mamba2_uses_last_sequence_step(quake_module):
     model = QuakeMamba2(d_model=16, d_state=4, input_dim=8, num_classes=3, num_patches=2)
 
     with torch.no_grad():
-        model.proj_in.weight.zero_()
-        model.proj_in.bias.zero_()
+        # Zero all Linear weights and biases in the Sequential proj_in
+        for layer in model.proj_in:
+            if hasattr(layer, 'weight'):
+                layer.weight.zero_()
+            if hasattr(layer, 'bias') and layer.bias is not None:
+                layer.bias.zero_()
         model.proj_out.weight.zero_()
         model.proj_out.bias.copy_(torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]))
 

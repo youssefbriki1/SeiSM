@@ -1,12 +1,10 @@
 """
 LSTM-based earthquake magnitude class predictor.
 
-Data format (from pipeline.py):
-  - output pickle: dict with 'eq_data' → list of N arrays, each (10, 86, 282)
-      10  : history years (Y-9 … Y)
-      86  : patch 0 = general map, patches 1-85 = regions
-      282 : min-max normalised features
-  - labels pickle: list of N arrays, each (85,) — class 0-3 per region
+Data format (from pipeline.py / SafeNetDataset):
+  - features: (batch, seq=10, num_patches=86, features=282)
+      86 patches: patch 0 = general map, patches 1-85 = regions
+  - labels:   (batch, 85)  — ordinal class 0-3, one per region (no general map)
 
 Classes:
   0 : M < 5
@@ -47,10 +45,15 @@ NUM_CLASSES = 4  # 0, 1, 2, 3
 # Neural network module
 # ---------------------------------------------------------------------------
 class LSTMModel(nn.Module):
-    """Stacked LSTM followed by a linear classifier.
+    """Stacked LSTM applied independently to each spatial patch.
 
-    Input : (batch, seq_len=10, input_size=282)
-    Output: (batch, num_classes=4)  — raw logits
+    Accepts the same input format as SafeNetDataset / the Mamba model:
+
+        Input : (batch, seq=10, num_patches=86, features=282)
+        Output: (batch, 85, num_classes=4)
+
+    Patch 0 (general map) is used during the LSTM pass but dropped from
+    the output so that the shape aligns with the 85-region label vector.
     """
 
     def __init__(
@@ -73,15 +76,22 @@ class LSTMModel(nn.Module):
         self.classifier = nn.Linear(hidden_size, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (batch, seq_len, input_size)
+        # x: (batch, seq, num_patches, features)
+        batch, seq, num_patches, features = x.shape
+
+        # Run the LSTM independently for every patch
+        # → reshape to (batch * num_patches, seq, features)
+        x = x.permute(0, 2, 1, 3).reshape(batch * num_patches, seq, features)
         _, (h_n, _) = self.lstm(x)
-        # h_n: (num_layers, batch, hidden_size) — take the last layer
-        out = self.dropout(h_n[-1])
-        return self.classifier(out)  # (batch, num_classes) logits
+        out = self.dropout(h_n[-1])                             # (batch*patches, hidden)
+        logits = self.classifier(out)                           # (batch*patches, classes)
+
+        logits = logits.view(batch, num_patches, -1)            # (batch, patches, classes)
+        return logits[:, 1:, :]                                 # drop patch 0 → (batch, 85, classes)
 
 
 # ---------------------------------------------------------------------------
-# High-level predictor
+# High-level predictor  (standalone, no wandb dependency)
 # ---------------------------------------------------------------------------
 class LSTMEarthquakePredictor:
     """Train and evaluate an LSTM model on earthquake catalog features.
@@ -146,29 +156,16 @@ class LSTMEarthquakePredictor:
     def _prepare_tensors(
         self, data_file: str, labels_file: str
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Load pickles and reshape to (N, seq_len=10, features=282) / (N,).
-
-        Each (year, region) pair becomes one training sample.
-        Patch 0 (general map) is excluded; only patches 1-85 (regions) are used.
-        """
+        """Load pickles and return (N, seq=10, 86, 282) / (N, 85) tensors."""
         output = self._load_pickle(data_file)
         labels = self._load_pickle(labels_file)
 
         eq_data = output["eq_data"]  # list of (10, 86, 282) arrays
 
-        X = np.stack(eq_data, axis=0).astype(np.float32)  # (num_years, 10, 86, 282)
-        y = np.stack(labels, axis=0).astype(np.int64)     # (num_years, 85)
+        X = np.stack(eq_data, axis=0).astype(np.float32)  # (N, 10, 86, 282)
+        y = np.stack(labels, axis=0).astype(np.int64)     # (N, 85)
 
-        num_years = X.shape[0]
-
-        # Keep only region patches (indices 1-85); drop general map (index 0)
-        X_regions = X[:, :, 1:, :]                         # (num_years, 10, 85, 282)
-        X_regions = X_regions.transpose(0, 2, 1, 3)        # (num_years, 85, 10, 282)
-
-        X_flat = X_regions.reshape(num_years * 85, 10, 282) # (N, 10, 282)
-        y_flat = y.reshape(num_years * 85)                  # (N,)
-
-        return torch.tensor(X_flat), torch.tensor(y_flat)
+        return torch.tensor(X), torch.tensor(y)
 
     # ------------------------------------------------------------------
     # Training
@@ -182,7 +179,7 @@ class LSTMEarthquakePredictor:
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
         self.model = LSTMModel(
-            input_size=282,
+            input_size=X_train.shape[-1],
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             num_classes=NUM_CLASSES,
@@ -190,7 +187,7 @@ class LSTMEarthquakePredictor:
         ).to(self.device)
 
         # Inverse-frequency class weights to handle class imbalance
-        counts = np.bincount(y_train.numpy(), minlength=NUM_CLASSES).astype(np.float32)
+        counts = np.bincount(y_train.numpy().ravel(), minlength=NUM_CLASSES).astype(np.float32)
         weights = torch.tensor(1.0 / (counts + 1e-6)).to(self.device)
         weights /= weights.sum()
 
@@ -211,8 +208,8 @@ class LSTMEarthquakePredictor:
                 y_batch = y_batch.to(self.device)
 
                 optimizer.zero_grad()
-                logits = self.model(X_batch)
-                loss = criterion(logits, y_batch)
+                logits = self.model(X_batch)                    # (batch, 85, 4)
+                loss = criterion(logits.reshape(-1, NUM_CLASSES), y_batch.view(-1))
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 optimizer.step()
@@ -241,21 +238,19 @@ class LSTMEarthquakePredictor:
         self.model.eval()
         all_preds, all_probs = [], []
 
-        loader = DataLoader(
-            TensorDataset(X_test), batch_size=self.batch_size, shuffle=False
-        )
+        loader = DataLoader(TensorDataset(X_test), batch_size=self.batch_size, shuffle=False)
 
         with torch.no_grad():
             for (X_batch,) in loader:
                 X_batch = X_batch.to(self.device)
-                logits = self.model(X_batch)
+                logits = self.model(X_batch).reshape(-1, NUM_CLASSES)  # (batch*85, 4)
                 probs = torch.softmax(logits, dim=-1).cpu().numpy()
                 all_preds.append(probs.argmax(axis=-1))
                 all_probs.append(probs)
 
-        y_pred = np.concatenate(all_preds)   # (N,)
-        y_prob = np.concatenate(all_probs)   # (N, K)
-        y_true = y_test.numpy()
+        y_pred = np.concatenate(all_preds)
+        y_prob = np.concatenate(all_probs)
+        y_true = y_test.numpy().ravel()
 
         acc = accuracy_score(y_true, y_pred)
         f1_macro = f1_score(y_true, y_pred, average="macro", zero_division=0)
@@ -291,9 +286,6 @@ class LSTMEarthquakePredictor:
             "auc_roc": auc,
         }
 
-    # ------------------------------------------------------------------
-    # Convenience
-    # ------------------------------------------------------------------
     def run(self) -> dict:
         """Train the model then evaluate it. Returns the metrics dict."""
         self.train()
@@ -306,7 +298,6 @@ class LSTMEarthquakePredictor:
 def main() -> dict:
     """Run the full pipeline: split → feature engineering → LSTM train/eval."""
 
-    # ── Step 1: split raw CSV into training_data.csv / testing_data.csv ──
     print("=" * 50)
     print("Step 1: Splitting raw data")
     print("=" * 50)
@@ -316,7 +307,6 @@ def main() -> dict:
         check=True,
     )
 
-    # ── Step 2: run feature-engineering pipeline ──────────────────────────
     print()
     print("=" * 50)
     print("Step 2: Feature engineering pipeline")
@@ -327,7 +317,6 @@ def main() -> dict:
         check=True,
     )
 
-    # ── Step 3: train LSTM and evaluate ──────────────────────────────────
     print()
     print("=" * 50)
     print("Step 3: LSTM training and evaluation")

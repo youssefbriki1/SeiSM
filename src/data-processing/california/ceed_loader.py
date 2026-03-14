@@ -29,7 +29,8 @@ class CEEDdataset:
     CEED dataset handler for metadata catalog and lazy waveform loading.
     """
 
-    def __init__(self, dataset_name="CEED", base_path=None, waveform_base_path=None):
+    def __init__(self, dataset_name="CEED", base_path=None, waveform_base_path=None, 
+                 catalog_path=None):
         """
         Args:
             dataset_name (str, default="CEED"):
@@ -42,7 +43,7 @@ class CEEDdataset:
 
         self.dataset_name = dataset_name
         self.base_path = Path(base_path) if base_path else Path(f"data/{dataset_name}")
-        self.catalog_path = Path(f"{self.base_path}/catalog.parquet")
+        self.catalog_path = Path(catalog_path) if catalog_path else Path(f"{self.base_path}/catalog.parquet")
         self.waveform_base_path = Path(waveform_base_path) if waveform_base_path else Path(f"data/{dataset_name}")
         self.catalog = None
         self.pointer_index = None
@@ -89,9 +90,12 @@ class CEEDdataset:
         print(f"Catalog saved to {self.catalog_path}, events: {len(df)}")
     """
 
-    def download_metadata_csv(self):
+    def download_metadata_csv(self)-> str:
         """
         Download events.csv directly from HF Hub.
+        
+        Returns:
+            local_csv (str): Path to the downloaded CSV file
         """
         self.base_path.mkdir(exist_ok=True, parents=True)
         local_csv = hf_hub_download(
@@ -115,7 +119,8 @@ class CEEDdataset:
             csv_path = self.download_metadata_csv()
 
         df = pd.read_csv(csv_path)
-        df["year"] = pd.to_datetime(df["event_time"]).dt.year
+        df["event_time"] = pd.to_datetime(df["event_time"])
+        df["year"] = df["event_time"].dt.year
         df.to_parquet(self.catalog_path)
         self.catalog = df
         print(f"Catalog saved to {self.catalog_path}, events: {len(df)}")
@@ -124,27 +129,36 @@ class CEEDdataset:
     # -----------------------------
     # CATALOG ACCESS
     # -----------------------------
-    def load_catalog(self):
-        if self.catalog is None:
+    def load_catalog(self)-> pd.DataFrame:
+        """Load catalog from Parquet file if not already loaded."""
+        
+        if self.catalog_path is None: # parquet not created
+            self.build_catalog()
+            
+        elif self.catalog is None: # parquet exists but not loaded
             self.catalog = pd.read_parquet(self.catalog_path)
         return self.catalog
 
-    def get_years(self):
+    def get_years(self)-> list:
+        """Get all available years from the catalog."""
         if self.catalog is None:
             self.load_catalog()
         return sorted(self.catalog.year.unique())
 
-    def get_year(self, year:int):
+    def get_year(self, year:int)-> pd.DataFrame:
+        """Get events for a specific year."""
         if self.catalog is None:
             self.load_catalog()
         return self.catalog[self.catalog.year == year]
 
-    def get_time_range(self, start:int, end:int):
+    def get_time_range(self, start:int, end:int)-> pd.DataFrame:
+        """Get events within a specific time range (inclusive)."""
         if self.catalog is None:
             self.load_catalog()
         return self.catalog[(self.catalog.year >= start) & (self.catalog.year <= end)]
 
-    def get_locations(self):
+    def get_locations(self)-> pd.DataFrame:
+        """Get latitude, longitude, and depth_km for all events in the catalog."""
         if self.catalog is None:
             self.load_catalog()
         return self.catalog[["latitude", "longitude", "depth_km"]]
@@ -152,8 +166,14 @@ class CEEDdataset:
     # -----------------------------
     # POINTER INDEX
     # -----------------------------
-    def build_pointer_index(self):
-        """Map event_id -> waveform path (lazy loading)"""
+    def build_pointer_index(self) -> dict:
+        """
+        Map event_id -> waveform path (lazy loading)
+        
+        Returns:
+            pointers (dict):
+                dictionnary of form {event_id: waveform_path}
+        """
         if self.catalog is None:
             self.load_catalog()
         pointers = {}
@@ -184,10 +204,24 @@ class CEEDdataset:
             self.pointer_index = pointer_index
             self.event_ids = event_ids
 
-        def __len__(self):
+        def __len__(self)-> int:
             return len(self.event_ids)
 
-        def __getitem__(self, idx:int):
+        def __getitem__(self, idx:int)-> tuple[torch.tensor, torch.tensor, tuple]:
+            """
+            Get waveform and metadata for a given event index.
+            
+            - waveform (torch.tensor): Seismic waveform data
+            - magnitude (torch.tensor): Event magnitude (or 0.0 if not available)
+            - event_loc (tuple): (latitude, longitude, depth_km) from HDF
+            
+            Args:
+                idx (int): Index of the event in the dataset
+                
+            Returns:
+                item (tuple): (waveform, magnitude, event_loc)
+            """
+            
             event_id = self.event_ids[idx]
             h5_path = self.pointer_index[event_id]
             with h5py.File(h5_path, "r") as f:
@@ -202,13 +236,18 @@ class CEEDdataset:
     # ----------------------------
     # Fault map helpers
     # ----------------------------
-    def get_events_by_year(self, year):
+    def get_events_by_year(self, year)-> pd.DataFrame:
+        """
+        Get earthquake events for a specific year from the catalog.
+        
+        Args:
+            year (int): Year to filter events by
+        Returns:
+            df_year (pd.DataFrame): 
+                Df of events for the specified year
+        """
         df = self.load_catalog()
         return df[df.year == year]
-
-    def get_years(self):
-        df = self.load_catalog()
-        return sorted(df.year.unique())
     
       
     
@@ -217,30 +256,25 @@ class CEEDdataset:
 # ---------------------------------------------------------------------------
 def main() -> dict:
     # Initialize
-    ceed = CEEDdataset()
+    # ceed = CEEDdataset()
     
     # Build catalog (downloads CSV and saves Parquet)
-    ceed.build_catalog()
+    # ceed.build_catalog()
     
     # Access events from 2010
-    events_2010 = ceed.get_events_by_year(2010)
+    # events_2010 = ceed.get_events_by_year(2010)
     
     # List available years
-    years = ceed.get_years()
+    # years = ceed.get_years()
 
     # Build waveform pointer index
     # pointers = ceed.build_pointer_index()
 
     # Create PyTorch dataset for training
-    train_ids = list(events_2010.index)
-    torch_dataset = ceed.CEEDTorchDataset(ceed.pointer_index, train_ids)
+    # train_ids = list(events_2010.index)
+    # torch_dataset = ceed.CEEDTorchDataset(ceed.pointer_index, train_ids)
 
-    return {
-        "catalog_sample": events_2010.head(),
-        "torch_dataset_length": len(torch_dataset),
-        "available_years": years
-    }
-
+    return ceed
 
 if __name__ == "__main__":
     main()

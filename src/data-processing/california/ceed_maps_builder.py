@@ -1,0 +1,266 @@
+"""
+Builds spatial tensors from CEED earthquake catalog and USGS geology and fault data.
+
+Output:
+    yearly tensors (5,512,512)
+    SafeNet-style patches
+"""
+from pathlib import Path
+
+from ceed_loader import CEEDdataset
+import numpy as np
+import pandas as pd
+import geopandas as gpd
+import rasterio
+from rasterio.features import rasterize
+from shapely.geometry import box
+from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import gaussian_filter
+
+
+class CEEDmaps:
+    """
+    CEED and USGS data handler for building spatial tensors in the SafeNet format.
+    
+    This is 5-channel: 1 for earthquake density, 1 for fault distance, 3 for lithology classes.
+    Then split into patches for ML pipelines.
+    """
+    def __init__(self, ceed_dataset:CEEDdataset, faults_path:str, geology_path:str, 
+                 bbox:tuple=(-125, 32, -113, 42), grid_size:int=512, patch_size:int=64,
+                 stride:int=64,):
+        """
+        Args:
+            ceed_dataset (CEEDdataset):
+                Instance of CEEDdataset for metadata access
+            faults_path (str):
+                Path to USGS fault shapefile
+            geology_path (str):
+                Path to USGS geology shapefile
+            bbox (tuple, default=(-125, 32, -113, 42)):
+                Bounding box for the region of interest (xmin, ymin, xmax, ymax)
+            grid_size (int, default=512):
+                Size of the output spatial tensor (grid_size x grid_size)
+            patch_size (int, default=64):
+                Size of the extracted patches (patch_size x patch_size)
+            stride (int, default=64):
+                Stride for patch extraction (default is non-overlapping)
+        """
+
+        self.ds = ceed_dataset
+
+        self.faults_path = faults_path
+        self.geology_path = geology_path
+
+        self.xmin, self.ymin, self.xmax, self.ymax = bbox
+
+        self.grid_size = grid_size
+        self.patch_size = patch_size
+        self.stride = stride
+
+        self.dx = (self.xmax - self.xmin) / grid_size
+        self.dy = (self.ymax - self.ymin) / grid_size
+
+        self._load_static_layers()
+
+    # -----------------------------
+    # coordinate helpers
+    # -----------------------------
+
+    def lon_to_x(self, lon: float)-> int:
+        return ((lon - self.xmin) / self.dx).astype(int)
+
+    def lat_to_y(self, lat: float)-> int:
+        return ((self.ymax - lat) / self.dy).astype(int)
+
+    # -----------------------------
+    # static layers
+    # -----------------------------
+
+    def _load_static_layers(self):
+        """Load static layers (fault distance and lithology) once during initialization."""
+
+        self.fault_distance = self._build_fault_distance()
+        self.lithology = self._build_lithology()
+
+    # -----------------------------
+    # FAULT DISTANCE
+    # -----------------------------
+
+    def _build_fault_distance(self)-> np.ndarray:
+        """
+        Build a distance map to the nearest fault line using USGS fault shapefile.
+         - Reads fault geometries, rasterizes them, and computes distance transform.
+         - Normalizes distance to [0,1] range for ML input.
+         
+        Returns:
+            2D numpy array of shape (grid_size, grid_size) with normalized distances to faults.
+        """
+        
+
+        faults = gpd.read_file(self.faults_path).to_crs("EPSG:4326")
+
+        bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
+        faults = faults.clip(bbox)
+
+        transform = rasterio.transform.from_bounds(
+            self.xmin,
+            self.ymin,
+            self.xmax,
+            self.ymax,
+            self.grid_size,
+            self.grid_size,
+        )
+
+        shapes = ((g, 1) for g in faults.geometry)
+
+        fault_mask = rasterize(
+            shapes,
+            out_shape=(self.grid_size, self.grid_size),
+            transform=transform,
+        )
+
+        distance = distance_transform_edt(1 - fault_mask)
+
+        distance /= distance.max()
+
+        return distance
+
+    # -----------------------------
+    # GEOLOGY → 3 CHANNELS
+    # -----------------------------
+
+    def _classify_lithology(self, row) -> int:
+        """Classify lithology into 3 classes (dimensions)"""
+
+        text = str(row).lower()
+
+        if "sediment" in text:
+            return 0
+
+        if "volcan" in text:
+            return 1
+
+        return 2
+
+    def _build_lithology(self)-> np.ndarray:
+        """
+        Build a lithology map using USGS geology shapefile.
+        - Reads geology polygons, classifies them into 3 classes, and rasterizes each class into separate channels.
+        
+        Returns:
+            3D numpy array of shape (3, grid_size, grid_size) with binary masks for each lithology class.    
+        """
+    
+        gdf = gpd.read_file(self.geology_path).to_crs("EPSG:4326")
+
+        bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
+        gdf = gdf.clip(bbox)
+
+        transform = rasterio.transform.from_bounds(
+            self.xmin,
+            self.ymin,
+            self.xmax,
+            self.ymax,
+            self.grid_size,
+            self.grid_size,
+        )
+
+        classes = gdf.apply(self._classify_lithology, axis=1)
+
+        layers = []
+
+        for c in range(3):
+
+            shapes = (
+                (geom, 1)
+                for geom, cl in zip(gdf.geometry, classes)
+                if cl == c
+            )
+
+            raster = rasterize(
+                shapes,
+                out_shape=(self.grid_size, self.grid_size),
+                transform=transform,
+            )
+
+            layers.append(raster)
+
+        return np.stack(layers)
+
+    # -----------------------------
+    # EARTHQUAKE GAUSSIAN MAP
+    # -----------------------------
+
+    def build_earthquake_map(self, events: pd.DataFrame)-> np.ndarray:
+        """
+        Build a Gaussian map of earthquake locations.
+        
+        Args:
+            events (DataFrame):
+                DataFrame containing earthquake events with 'latitude', 'longitude', and 'magnitude' columns
+        
+        """
+        
+
+        layer = np.zeros((self.grid_size, self.grid_size))
+
+        x = self.lon_to_x(events.longitude.values)
+        y = self.lat_to_y(events.latitude.values)
+
+        mags = events.magnitude.values
+
+        for xi, yi, m in zip(x, y, mags):
+
+            if 0 <= xi < self.grid_size and 0 <= yi < self.grid_size:
+
+                layer[yi, xi] += m
+
+        # Gaussian smoothing (SafeNet-like kernel)
+        layer = gaussian_filter(layer, sigma=1.5)
+
+        return layer
+
+    # -----------------------------
+    # YEAR TENSOR
+    # -----------------------------
+
+    def build_year_tensor(self, year)-> np.ndarray:
+        """Build a 5-channel spatial tensor for a specific year"""
+
+        events = self.ds.get_events_by_year(year)
+
+        eq_layer = self.build_earthquake_map(events)
+
+        tensor = np.vstack(
+            [
+                eq_layer[np.newaxis, :, :],
+                self.fault_distance[np.newaxis, :, :],
+                self.lithology,
+            ]
+        )
+
+        return tensor
+
+    # -----------------------------
+    # PATCH EXTRACTION
+    # -----------------------------
+
+    def extract_patches(self, tensor):
+
+        C, H, W = tensor.shape
+
+        patches = []
+
+        for y in range(0, H - self.patch_size + 1, self.stride):
+            for x in range(0, W - self.patch_size + 1, self.stride):
+
+                patch = tensor[
+                    :,
+                    y : y + self.patch_size,
+                    x : x + self.patch_size,
+                ]
+
+                patches.append(patch)
+
+        return np.array(patches)
+    

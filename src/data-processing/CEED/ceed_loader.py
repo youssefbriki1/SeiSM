@@ -41,9 +41,9 @@ class CEEDdataset:
         """
 
         self.dataset_name = dataset_name
-        self.base_path = Path(base_path) if base_path else Path(f"data/{dataset_name}")
+        self.base_path = Path(base_path) if base_path else Path(f"data")
         self.catalog_path = Path(f"{self.base_path}/catalog.parquet")
-        self.waveform_base_path = Path(waveform_base_path) if waveform_base_path else Path(f"data/{dataset_name}")
+        self.waveform_base_path = Path(waveform_base_path) if waveform_base_path else Path(f"data")
         self.catalog = None
         self.pointer_index = None
 

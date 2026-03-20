@@ -129,14 +129,16 @@ class CEEDdataset:
     # -----------------------------
     # CATALOG ACCESS
     # -----------------------------
-    def load_catalog(self)-> pd.DataFrame:
-        """Load catalog from Parquet file if not already loaded."""
-        
-        if self.catalog_path is None: # parquet not created
-            self.build_catalog()
-            
-        elif self.catalog is None: # parquet exists but not loaded
+    def load_catalog(self) -> pd.DataFrame:
+        """Load catalog from Parquet file, building it first if needed."""
+        if self.catalog is not None:
+            return self.catalog
+
+        if not self.catalog_path.exists():
+            self.build_catalog()        # downloads CSV
+        else:
             self.catalog = pd.read_parquet(self.catalog_path)
+
         return self.catalog
 
     def get_years(self)-> list:

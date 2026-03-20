@@ -31,8 +31,8 @@ def main():
     # Load CEED dataset
     # ------------------------------
     
-    # df = CEEDdataset()                                        # from scratch
-    df = CEEDdataset(catalog_path="data/CEED/catalog.parquet") # if parquet already built
+    df = CEEDdataset()                                        # from scratch
+    # df = CEEDdataset(catalog_path="data/CEED/catalog.parquet") # if parquet already built
     
     df.load_catalog()
     # ------------------------------

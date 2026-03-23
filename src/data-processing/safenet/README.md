@@ -21,9 +21,9 @@ data/1970-2021_11_EARTH_final_with_patchnum.csv
     │   └─ data/testing_data.csv        (2002–2021)
     │
     └─ pipeline.py
-        ├─ data/training_output.pickle  (features: target years 1979–2010)
+        ├─ data/training_output.pickle  (features: target years 1979–2010 & maps from 1971-2011)
         ├─ data/training_labels.pickle  (labels:   1980–2011)
-        ├─ data/testing_output.pickle   (features: target years 2011–2020)
+        ├─ data/testing_output.pickle   (features: target years 2011–2020  & maps from 2002-2021)
         └─ data/testing_labels.pickle   (labels:   2012–2021)
 ```
 
@@ -48,6 +48,16 @@ Each feature vector covers a **12-month sliding window** (Nov 17 Y-1 → Nov 16 
 | 273 | 1 | RMS earthquake energy (E=10^(1.5M+4.8)) of latest 100 |
 | 274–277 | 4 | Mean interval time per mag range for latest 100 |
 | 278–281 | 4 | SD/mean interval ratio per mag range for latest 100 |
+
+## Map Processing (5 channels)
+Channel 0 - 2: R, G, B representation of the original map (static)
+Channel 3: China fault map (static)
+Channel 4: Earthquake distribution map (changes year-by-year)
+
+Channel 0-3 are loaded directly from Safent's provided dataset
+Channel 4 are dynamically calculated in image_process.py
+
+You can visualize different channels of the map with map_visualization.py
 
 ## Output Structure
 

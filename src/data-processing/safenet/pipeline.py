@@ -24,6 +24,7 @@ import pickle
 import json
 import os
 import sys
+import image_process
 
 # ═══════════════════════════════════════════════════════════════════════
 # HELPERS
@@ -493,11 +494,14 @@ def build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years=Non
         eq_data.append(year_array)
         print(f"  Target year {target_yr}: assembled (10, 86, 282)")
 
+    #norm_start: 10 yeears before target_years[0]
+    png_data = image_process.generate_map(norm_start, target_years[-1] + 1)
+
     # ── Step 4: Save pickle ──
     print(f"\n=== Step 4: Saving to {output_pickle} ===")
     output = {
         'eq_data': eq_data,
-        'png': []  # placeholder — PNG data not generated here
+        'png': png_data  # placeholder — PNG data not generated here
     }
     with open(output_pickle, 'wb') as f:
         pickle.dump(output, f)

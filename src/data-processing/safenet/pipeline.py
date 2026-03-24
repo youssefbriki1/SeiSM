@@ -501,7 +501,7 @@ def build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years=Non
     print(f"\n=== Step 4: Saving to {output_pickle} ===")
     output = {
         'eq_data': eq_data,
-        'png': png_data  # placeholder — PNG data not generated here
+        'png': png_data
     }
     with open(output_pickle, 'wb') as f:
         pickle.dump(output, f)

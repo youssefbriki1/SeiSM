@@ -31,7 +31,7 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "data"
 DEFAULT_CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
 
 sys.path.insert(0, str(SRC_ROOT))
-from utils import SafeNetDataset, FocalLoss
+from utils import SafeNetDataset, MultimodalSafeNetDataset, FocalLoss
 
 
 # ---------------------------------------------------------------------------
@@ -48,12 +48,35 @@ def _build_lstm(args, num_patches: int, num_features: int) -> nn.Module:
     )
 
 
+def _build_safenet_embeddings(args, num_patches: int, num_features: int) -> nn.Module:
+    from models.safenet_embeddings import SafeNetEmbeddings
+    return SafeNetEmbeddings(
+        num_classes=args.num_classes,
+        catalog_features=num_features,
+        num_patches=num_patches - 1,  # 86 → 85 (global token excluded inside model)
+    )
+
+
+def _build_safenet_full(args, num_patches: int, num_features: int) -> nn.Module:
+    from models.safenet_embeddings import SafeNetFull
+    return SafeNetFull(
+        num_classes=args.num_classes,
+        catalog_features=num_features,
+        num_patches=num_patches - 1,
+        dropout=args.dropout,
+    )
+
+
 # To add a new baseline:
 #   1. Write a _build_<name> factory above.
 #   2. Register it here.
 BASELINE_MODELS: dict[str, callable] = {
     "lstm": _build_lstm,
+    "safenet_emb": _build_safenet_embeddings,
+    "safenet_full": _build_safenet_full,
 }
+
+MULTIMODAL_MODELS = {"safenet_emb", "safenet_full"}
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +96,13 @@ def resolve_path(path_str: str, base_dir: Path | None = None) -> Path:
     return (base_dir / path).resolve() if base_dir else (Path.cwd() / path).resolve()
 
 
+def _to_device(x, device):
+    """Move a tensor or a dict of tensors to *device*."""
+    if isinstance(x, dict):
+        return {k: v.to(device) for k, v in x.items()}
+    return x.to(device)
+
+
 def evaluate_split(
     model: nn.Module,
     dataloader: DataLoader,
@@ -87,7 +117,7 @@ def evaluate_split(
 
     with torch.no_grad():
         for x, y in tqdm(dataloader, desc=desc, leave=False):
-            x, y = x.to(device), y.to(device)
+            x, y = _to_device(x, device), y.to(device)
             logits = model(x).reshape(-1, num_classes)   # (batch*85, classes)
             y_flat = y.view(-1)                        # (batch*85,)
 
@@ -122,8 +152,11 @@ def train(args: argparse.Namespace) -> None:
     val_features   = resolve_path(args.val_features_file,   data_dir)
     val_labels     = resolve_path(args.val_labels_file,     data_dir)
 
-    train_dataset = SafeNetDataset(train_features, train_labels)
-    val_dataset   = SafeNetDataset(val_features,   val_labels)
+    multimodal = args.model in MULTIMODAL_MODELS
+    DatasetCls = MultimodalSafeNetDataset if multimodal else SafeNetDataset
+
+    train_dataset = DatasetCls(train_features, train_labels)
+    val_dataset   = DatasetCls(val_features,   val_labels)
     train_loader  = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader    = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False)
 
@@ -131,11 +164,14 @@ def train(args: argparse.Namespace) -> None:
     if not args.skip_test_eval:
         test_features = resolve_path(args.test_features_file, data_dir)
         test_labels   = resolve_path(args.test_labels_file,   data_dir)
-        test_dataset  = SafeNetDataset(test_features, test_labels)
+        test_dataset  = DatasetCls(test_features, test_labels)
         test_loader   = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     sample_x, _ = train_dataset[0]
-    _, num_patches, num_features = sample_x.shape   # (seq, patches, features)
+    if isinstance(sample_x, dict):
+        _, num_patches, num_features = sample_x["catalog"].shape  # (seq, patches, features)
+    else:
+        _, num_patches, num_features = sample_x.shape
 
     # ── Model ─────────────────────────────────────────────────────────────
     if args.model not in BASELINE_MODELS:
@@ -207,7 +243,7 @@ def train(args: argparse.Namespace) -> None:
             train_total = 0
 
             for x, y in tqdm(train_loader, desc="Training"):
-                x, y = x.to(device), y.to(device)
+                x, y = _to_device(x, device), y.to(device)
                 optimizer.zero_grad()
 
                 logits = model(x).reshape(-1, num_classes)   # (batch*85, classes)

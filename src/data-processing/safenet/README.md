@@ -67,7 +67,10 @@ Each feature pickle contains:
   - `10` — history years (Y-9 to Y)
   - `86` — patch 0 (general map) + patches 1–85 (regions via `png_list_to_patchxy.csv`)
   - `282` — min-max normalized features (float32, [0,1])
-- **`png`**: placeholder (empty list)
+- **`png`**: list of arrays, one per calendar year from `norm_start` to `target_years[-1]+1`, each `(85, 50, 50, 5)`
+  - `85` — regions (no global token for images)
+  - `50×50` — spatial resolution per patch
+  - `5` — channels: R/G/B geology map (0-2), fault map grayscale (3), earthquake distribution (4)
 
 Normalization is per-column min-max across all regions and years:
 ```

@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -100,7 +102,8 @@ def render_eq_distribution(year):
     print("Calculating eq distribution map ... ")
     global cols, rows, img
     
-    raw_csv = "data/1970-2021_11_EARTH_final_with_patchnum.csv"
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    raw_csv = os.path.join(DATA_DIR, "1970-2021_11_EARTH_final_with_patchnum.csv")
     df = pd.read_csv(raw_csv, usecols=['magnitude', 'x', 'y', 'onlydate', 'region'])
     df['_onlydate_dt'] = pd.to_datetime(df['onlydate'])
 
@@ -159,7 +162,8 @@ def reset():
 
 def combine_channels():
     global png_data
-    patch_csv = "data/png_list_to_patchxy.csv"
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    patch_csv = os.path.join(DATA_DIR, "png_list_to_patchxy.csv")
     df = pd.read_csv(patch_csv, usecols=['x', 'y'])
     ch4 = []
     for _, patch in df.iterrows():

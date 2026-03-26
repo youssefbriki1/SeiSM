@@ -1,8 +1,11 @@
+import os
+from pathlib import Path
 import pickle, numpy as np
 
-with open('data/testing_labels.pickle', 'rb') as f:
+DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+with open(os.path.join(DATA_DIR, 'testing_labels.pickle'), 'rb') as f:
     ours = pickle.load(f)
-with open('data/labels_mag_C_class4_for_eval_10y_in_11_16.pickle', 'rb') as f:
+with open(os.path.join(DATA_DIR, 'labels_mag_C_class4_for_eval_10y_in_11_16.pickle'), 'rb') as f:
     ref = pickle.load(f)
 
 print(f'Ours: {len(ours)} entries, each shape {ours[0].shape}')

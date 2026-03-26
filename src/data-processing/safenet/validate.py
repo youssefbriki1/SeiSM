@@ -6,11 +6,12 @@ Run this AFTER pipeline.py has produced replicated_output.pickle.
 import pickle
 import numpy as np
 import os
+from pathlib import Path
 
-DATA_DIR = os.path.dirname(os.path.abspath(__file__))
-
-REF_PICKLE = os.path.join(DATA_DIR, 'data', 'eqs_and_png_data_for_eval_10y_in_11_16.pickle')
-OUR_PICKLE = os.path.join(DATA_DIR, 'data', 'testing_output.pickle')
+MAPS_DIR = Path(__file__).parent / 'maps'
+DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+REF_PICKLE = os.path.join(MAPS_DIR, 'eqs_and_png_data_for_eval_10y_in_11_16.pickle')
+OUR_PICKLE = os.path.join(DATA_DIR, 'testing_output.pickle')
 
 COL_RANGES = [
     (0,   64,  "Top 5 magnitudes"),

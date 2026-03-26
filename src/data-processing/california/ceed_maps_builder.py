@@ -234,7 +234,7 @@ class CEEDmaps:
             event_csv_path="data/CEED/events_preprocessed_2002_2020.csv"
         
         EQ_map = ImageProcessing(
-            map_path="data/CEED/map_outline.jpg",
+            map_path="map_outline.jpg",
             event_csv_path=event_csv_path,
             patch_csv_path="data/CEED/png_list_to_patchxy_california.csv",
             cols= int(self.grid_size/self.patch_size),

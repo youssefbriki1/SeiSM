@@ -142,7 +142,8 @@ otherwise → load existing data
 
 Run the full pipeline:
 
-```
+```python
+uv run ceed_loader.py #if you have not downloaded the dataset
 uv run preprocess_full_pipeline.py
 ```
 

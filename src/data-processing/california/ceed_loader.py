@@ -258,10 +258,10 @@ class CEEDdataset:
 # ---------------------------------------------------------------------------
 def main() -> dict:
     # Initialize
-    # ceed = CEEDdataset()
+    ceed = CEEDdataset()
     
     # Build catalog (downloads CSV and saves Parquet)
-    # ceed.build_catalog()
+    ceed.build_catalog()
     
     # Access events from 2010
     # events_2010 = ceed.get_events_by_year(2010)

@@ -9,7 +9,7 @@ import os
 
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
-REF_PICKLE = os.path.join(DATA_DIR, 'data', 'eqs_and_png_data_for_eval_10y_in_11_16.pickle')
+REF_PICKLE = os.path.join(DATA_DIR, 'maps', 'eqs_and_png_data_for_eval_10y_in_11_16.pickle')
 OUR_PICKLE = os.path.join(DATA_DIR, 'data', 'testing_output.pickle')
 
 COL_RANGES = [

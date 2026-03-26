@@ -16,6 +16,7 @@ from rasterio.features import rasterize
 from shapely.geometry import box
 from scipy.ndimage import distance_transform_edt
 from scipy.ndimage import gaussian_filter
+from eq_map_generation import ImageProcessing
 
 
 class CEEDmaps:
@@ -26,8 +27,8 @@ class CEEDmaps:
     Then split into patches for ML pipelines.
     """
     def __init__(self, ceed_dataset:CEEDdataset, faults_path:str, geology_path:str, 
-                 bbox:tuple=(-125, 32, -113, 42), grid_size:int=512, patch_size:int=64,
-                 stride:int=64,):
+                 bbox:tuple=(-125, 32, -113, 42), grid_size:int=400, patch_size:int=50,
+                 stride:int=50,):
         """
         Args:
             ceed_dataset (CEEDdataset):
@@ -38,11 +39,11 @@ class CEEDmaps:
                 Path to USGS geology shapefile
             bbox (tuple, default=(-125, 32, -113, 42)):
                 Bounding box for the region of interest (xmin, ymin, xmax, ymax)
-            grid_size (int, default=512):
+            grid_size (int, default=400):
                 Size of the output spatial tensor (grid_size x grid_size)
-            patch_size (int, default=64):
+            patch_size (int, default=50):
                 Size of the extracted patches (patch_size x patch_size)
-            stride (int, default=64):
+            stride (int, default=50):
                 Stride for patch extraction (default is non-overlapping)
         """
 
@@ -227,15 +228,31 @@ class CEEDmaps:
     def build_year_tensor(self, year)-> np.ndarray:
         """Build a 5-channel spatial tensor for a specific year"""
 
-        events = self.ds.get_events_by_year(year)
+        # events = self.ds.get_events_by_year(year)
+        event_csv_path="data/CEED/events_preprocessed_1987_2010.csv"
+        if(year > 2010):
+            event_csv_path="data/CEED/events_preprocessed_2002_2020.csv"
+        
+        EQ_map = ImageProcessing(
+            map_path="data/CEED/map_outline.jpg",
+            event_csv_path=event_csv_path,
+            patch_csv_path="data/CEED/png_list_to_patchxy_california.csv",
+            cols= int(self.grid_size/self.patch_size),
+            rows = int(self.grid_size/self.patch_size),
+            width= self.grid_size,
+            height = self.grid_size,
+            patch_size= self.patch_size,
+            padding = 0
+        )
 
-        eq_layer = self.build_earthquake_map(events)
+        # eq_layer = self.build_earthquake_map(events)
+        eq_layer = EQ_map.generate_eq_map(year)
 
         tensor = np.vstack(
             [
-                eq_layer[np.newaxis, :, :],
-                self.fault_distance[np.newaxis, :, :],
                 self.lithology,
+                self.fault_distance[np.newaxis, :, :],
+                eq_layer[np.newaxis, :, :],
             ]
         )
 

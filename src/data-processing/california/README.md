@@ -34,11 +34,11 @@ Shape:
 Channels:
 
 ```
-0 earthquake magnitude density
-1 distance to nearest fault
-2 sedimentary lithology
-3 volcanic lithology
-4 crystalline lithology
+0 sedimentary lithology
+1 volcanic lithology
+2 crystalline lithology
+3 distance to nearest fault
+4 earthquake magnitude density
 ```
 
 ### Patches
@@ -143,22 +143,23 @@ otherwise → load existing data
 Run the full pipeline:
 
 ```
-python ceed_maps_pipeline.py
+uv run preprocess_full_pipeline.py
 ```
 
 This will:
-
-
+1. Run ceed_maps_pipeline to generate png_data, which will:
 - download metadata if needed
 - build catalog.parquet
 - download shapefiles if needed
 - generate yearly tensors
 - extract training patches
+2. Run Safe-net style processing to generate eq_data
+3. Combine png_data and eq_data to form pickle
 
 Outputs are written to:
 
 ```
-data/processed/ceed_maps/
+data/CEED/processed
 ```
 
 ## Using the Dataset Class

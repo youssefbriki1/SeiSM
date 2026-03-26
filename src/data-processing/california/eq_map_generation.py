@@ -218,7 +218,7 @@ class ImageProcessing:
 
 def main():
     CEED_map = ImageProcessing(
-        map_path="data/CEED/map_outline.jpg",
+        map_path="map_outline.jpg",
         event_csv_path="data/CEED/events_preprocessed_1987_2010.csv",
         patch_csv_path="data/CEED/png_list_to_patchxy_california.csv",
         cols= 8,

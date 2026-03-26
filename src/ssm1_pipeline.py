@@ -13,6 +13,7 @@ Pipeline:
 """
 
 import os
+from pathlib import Path
 import sys
 import pickle
 import subprocess
@@ -43,13 +44,13 @@ SSM_N_LAYERS = 2
 
 NUM_CLASSES  = 4
 
-DATA_DIR             = "data"
+DATA_DIR             = Path(__file__).parent.parent / 'data'
 TRAINING_PICKLE      = os.path.join(DATA_DIR, "training_output.pickle")
 TESTING_PICKLE       = os.path.join(DATA_DIR, "testing_output.pickle")
 TRAINING_LABELS      = os.path.join(DATA_DIR, "training_labels.pickle")
 TESTING_LABELS       = os.path.join(DATA_DIR, "testing_labels.pickle")
 SSM1_OUTPUT_PICKLE   = os.path.join(DATA_DIR, "ssm1_output.pickle")
-PREPROCESSING_SCRIPT = "src/data-processing/safenet/run_preprocessing.sh"
+PREPROCESSING_SCRIPT = os.path.join(Path(__file__).parent, "data-processing/safenet/run_preprocessing.sh")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -86,15 +87,16 @@ def smoke_test_spatial_ssm():
 # FULL PIPELINE
 # ═══════════════════════════════════════════════════════════════════════
 
-def run_pipeline(skip_preprocessing=False):
-    # ── Step 1: Preprocessing ─────────────────────────────────────────
+def run_pipeline(skip_preprocessing=False, validate=False):
     if not skip_preprocessing:
         print("=" * 60)
         print("Step 1: Running preprocessing script...")
         print("=" * 60)
-        subprocess.run(["bash", PREPROCESSING_SCRIPT], check=True)
-    else:
-        print("Step 1: Skipping preprocessing (skip_preprocessing=True)")
+        cmd = ["bash", str(PREPROCESSING_SCRIPT)]
+        if validate:
+            print("Adding preprocessing validation...")
+            cmd.append("--validate")
+        subprocess.run(cmd, check=True)
 
     # ── Step 2: Load data ─────────────────────────────────────────────
     print("\n" + "=" * 60)

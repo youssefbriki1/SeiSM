@@ -12,7 +12,7 @@ import sys
 from ceed_loader import CEEDdataset
 from ceed_maps_builder import CEEDmaps
 
-def main():
+def run_map_pipeline(start_year, end_year):
 
     OUTPUT = Path("data/processed/cal_maps")
     OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -31,6 +31,7 @@ def main():
     # Load CEED dataset
     # ------------------------------
     
+    print("Loading datasets \n")
     df = CEEDdataset()                                        # from scratch
     # df = CEEDdataset(catalog_path="data/CEED/catalog.parquet") # if parquet already built
     
@@ -47,7 +48,7 @@ def main():
     # ------------------------------
     # Loop over years
     # ------------------------------
-    for year in df.get_years():
+    for year in range(start_year, end_year+1):
 
         print(f"Processing year {year} ...")
         tensor = builder.build_year_tensor(year)
@@ -61,4 +62,4 @@ def main():
         )
 
 if __name__ == "__main__":
-    main()
+    run_map_pipeline(1987, 2023)

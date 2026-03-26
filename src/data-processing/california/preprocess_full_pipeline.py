@@ -29,6 +29,7 @@ import pickle
 import json
 import sys
 from pathlib import Path
+from ceed_maps_pipeline import run_map_pipeline
 
 # ── Paths ────────────────────────────────────────────────────────────────
 CEED_DIR   = Path("data/CEED")
@@ -107,6 +108,9 @@ def load_and_adapt(year_start: int, year_end: int) -> pd.DataFrame:
     years = dt.dt.year
     df = df[(years >= year_start) & (years <= year_end)].copy()
     print(f"Kept {len(df)} events ({year_start}-{year_end})")
+
+    df.to_csv(f'{CEED_DIR}/events_preprocessed_{year_start}_{year_end}.csv', index=False)
+
     return df
 
 
@@ -434,6 +438,7 @@ def build_pickle(df, output_pickle, norm_start, target_years):
         return result
 
     eq_data = []
+    png_data = []
     for target_yr in target_years:
         history_years = list(range(target_yr - 9, target_yr + 1))
         year_array    = np.zeros((10, n_total, 282), dtype=np.float32)
@@ -446,10 +451,14 @@ def build_pickle(df, output_pickle, norm_start, target_years):
         eq_data.append(year_array)
         print(f"  Target year {target_yr}: assembled (10, {n_total}, 282)")
 
+        png = np.load(f'data/processed/cal_maps/patches_{target_yr}.npy')
+        png_data.append(png)
+
+
     # ── Step 4: Save ──────────────────────────────────────────────────
     print(f"\n=== Step 4: Saving to {output_pickle} ===")
     with open(output_pickle, 'wb') as f:
-        pickle.dump({'eq_data': eq_data, 'png': []}, f)
+        pickle.dump({'eq_data': eq_data, 'png': png_data}, f)
     print("Done!")
     return eq_data
 
@@ -517,6 +526,7 @@ if __name__ == '__main__':
     print("TRAINING (target years 1996-2010)")
     print("="*60)
     df_train = prepare_dataframe(load_and_adapt(TRAIN_START, TRAIN_END))
+    run_map_pipeline(TRAIN_START, TRAIN_END)
     build_pickle(df_train, str(OUTPUT_DIR / 'ceed_training_output.pickle'),
                  norm_start=1988, target_years=list(range(1996, 2011)))
     build_labels(df_train, str(OUTPUT_DIR / 'ceed_training_labels.pickle'),
@@ -528,6 +538,7 @@ if __name__ == '__main__':
     print("TESTING (target years 2011-2020)")
     print("="*60)
     df_test = prepare_dataframe(load_and_adapt(TEST_START, TEST_END))
+    run_map_pipeline(TEST_START, TEST_END)
     build_pickle(df_test, str(OUTPUT_DIR / 'ceed_testing_output.pickle'),
                  norm_start=2002, target_years=list(range(2011, 2021)))
     build_labels(df_test, str(OUTPUT_DIR / 'ceed_testing_labels.pickle'),

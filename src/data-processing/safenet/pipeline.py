@@ -496,7 +496,7 @@ def build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years=Non
         print(f"  Target year {target_yr}: assembled (10, 86, 282)")
 
     #norm_start: 10 yeears before target_years[0]
-    png_data = image_process.generate_map(norm_start, target_years[-1] + 1)
+    png_data = image_process.generate_map(target_years[0] - 9, target_years[-1] + 1)
 
     # ── Step 4: Save pickle ──
     print(f"\n=== Step 4: Saving to {output_pickle} ===")

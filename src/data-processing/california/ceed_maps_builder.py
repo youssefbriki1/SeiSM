@@ -120,11 +120,15 @@ class CEEDmaps:
             transform=transform,
         )
 
-        distance = distance_transform_edt(1 - fault_mask)
+        fault_mask = 1 - fault_mask
 
-        distance /= distance.max()
+        return fault_mask
 
-        return distance
+        # distance = distance_transform_edt(1 - fault_mask)
+
+        # distance /= distance.max()
+
+        # return distance
 
     # -----------------------------
     # GEOLOGY → 3 CHANNELS
@@ -192,6 +196,7 @@ class CEEDmaps:
     # EARTHQUAKE GAUSSIAN MAP
     # -----------------------------
 
+    # Old way of generating earthquake distribution map, switched to ImageProcessing to align with safenet-style
     def build_earthquake_map(self, events: pd.DataFrame)-> np.ndarray:
         """
         Build a Gaussian map of earthquake locations.

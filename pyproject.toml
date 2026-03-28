@@ -80,3 +80,8 @@ dependencies = [
 override-dependencies = [
     "triton>=3.0.0; sys_platform == 'linux'",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

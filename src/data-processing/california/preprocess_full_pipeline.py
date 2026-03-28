@@ -451,8 +451,14 @@ def build_pickle(df, output_pickle, norm_start, target_years):
         eq_data.append(year_array)
         print(f"  Target year {target_yr}: assembled (10, {n_total}, 282)")
 
-        png = np.load(f'data/processed/cal_maps/patches_{target_yr}.npy')
+    # Load png data for the full history range (10 years before first target year)
+    png_start = min(target_years) - 9
+    png_end = max(target_years)
+    for yr in range(png_start, png_end + 1):
+        png = np.load(f'data/processed/cal_maps/patches_{yr}.npy')
+        png = png.transpose(0, 2, 3, 1)  # (N, 5, H, W) → (N, H, W, 5)
         png_data.append(png)
+    print(f"  Loaded png data for years {png_start}-{png_end} ({len(png_data)} entries)")
 
 
     # ── Step 4: Save ──────────────────────────────────────────────────

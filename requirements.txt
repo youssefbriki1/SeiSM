@@ -1,10 +1,35 @@
+# Core ML
 torch
 numpy
 pandas
 scikit-learn
-tqdm
-wandb
+scipy
+matplotlib
+
+# Deep Learning
+tensorflow
 mamba-ssm
 causal-conv1d>=1.4.0
+
+# Hugging Face
+datasets
+huggingface_hub
+
+# Geospatial
+geopandas
+rasterio
+shapely
+Pillow
+
+# Data / IO
+h5py
+requests
 lunardate
+
+# Experiment tracking
+wandb
+tensorboard
+
+# Utilities
+tqdm
 pytest

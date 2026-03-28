@@ -3,7 +3,7 @@ from mamba_ssm import Mamba2
 
 
 class QuakeMamba2(nn.Module):
-    def __init__(self, d_model=128, d_state=16, input_dim=64, num_classes=4, num_patches=16, **kwargs):
+    def __init__(self, d_model=128, d_state=16, input_dim=65*282, num_classes=4, num_patches=65, **kwargs):
         super().__init__()
         self.input_dim = input_dim
         self.proj_in = nn.Linear(self.input_dim, d_model)

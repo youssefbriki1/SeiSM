@@ -34,17 +34,17 @@ def quake_module(monkeypatch):
 
 def test_quake_mamba2_forward_shape(quake_module):
     QuakeMamba2 = quake_module.QuakeMamba2
-    model = QuakeMamba2(d_model=32, d_state=8, input_dim=64, num_classes=4, num_patches=16)
+    model = QuakeMamba2(d_model=32, d_state=8, input_dim=65*4, num_classes=4, num_patches=65)
 
-    x = torch.randn(2, 5, 16, 4)  # P * F = 64
+    x = torch.randn(2, 10, 65, 4)  # P * F = 65*4
     y = model(x)
 
-    assert y.shape == (2, 16, 4)
+    assert y.shape == (2, 65, 4)
 
 
 def test_quake_mamba2_passes_kwargs_to_mamba2(quake_module):
     QuakeMamba2 = quake_module.QuakeMamba2
-    model = QuakeMamba2(d_model=48, d_state=12, input_dim=64, expand=2)
+    model = QuakeMamba2(d_model=48, d_state=12, input_dim=65*4, expand=2)
 
     assert len(_StubMamba2.instances) == 1
     stub = _StubMamba2.instances[0]
@@ -52,7 +52,7 @@ def test_quake_mamba2_passes_kwargs_to_mamba2(quake_module):
     assert stub.d_state == 12
     assert stub.kwargs["expand"] == 2
 
-    x = torch.randn(1, 3, 16, 4)
+    x = torch.randn(1, 3, 65, 4)
     _ = model(x)
     assert stub.last_input_shape == (1, 3, 48)
 

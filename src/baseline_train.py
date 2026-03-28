@@ -27,7 +27,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 
 SRC_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = SRC_ROOT.parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "data"
+DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "california" / "data" / "CEED" / "processed"
 DEFAULT_CHECKPOINTS_DIR = PROJECT_ROOT / "checkpoints"
 
 sys.path.insert(0, str(SRC_ROOT))
@@ -351,12 +351,12 @@ if __name__ == "__main__":
 
     # Data
     parser.add_argument("--data_dir",           type=str, default=str(DEFAULT_DATA_DIR))
-    parser.add_argument("--train_features_file", type=str, default="training_output.pickle")
-    parser.add_argument("--train_labels_file",   type=str, default="training_labels.pickle")
-    parser.add_argument("--val_features_file",   type=str, default="testing_output.pickle")
-    parser.add_argument("--val_labels_file",     type=str, default="testing_labels.pickle")
-    parser.add_argument("--test_features_file",  type=str, default="testing_output.pickle")
-    parser.add_argument("--test_labels_file",    type=str, default="testing_labels.pickle")
+    parser.add_argument("--train_features_file", type=str, default="ceed_training_output.pickle")
+    parser.add_argument("--train_labels_file",   type=str, default="ceed_training_labels.pickle")
+    parser.add_argument("--val_features_file",   type=str, default="ceed_testing_output.pickle")
+    parser.add_argument("--val_labels_file",     type=str, default="ceed_testing_labels.pickle")
+    parser.add_argument("--test_features_file",  type=str, default="ceed_testing_output.pickle")
+    parser.add_argument("--test_labels_file",    type=str, default="ceed_testing_labels.pickle")
     parser.add_argument("--skip_test_eval", action="store_true")
 
     # Training hyper-parameters

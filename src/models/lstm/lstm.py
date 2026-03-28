@@ -36,7 +36,7 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _DATA_PROCESSING_DIR = os.path.abspath(
     os.path.join(_THIS_DIR, "..", "..", "data-processing")
 )
-_DATA_DIR = os.path.join(_DATA_PROCESSING_DIR, "data")
+_DATA_DIR = os.path.join(_DATA_PROCESSING_DIR, "california", "data", "CEED", "processed")
 
 NUM_CLASSES = 4  # 0, 1, 2, 3
 
@@ -322,10 +322,10 @@ def main() -> dict:
     print("Step 3: LSTM training and evaluation")
     print("=" * 50)
     predictor = LSTMEarthquakePredictor(
-        training_data_file=os.path.join(_DATA_DIR, "training_output.pickle"),
-        training_labels_file=os.path.join(_DATA_DIR, "training_labels.pickle"),
-        testing_data_file=os.path.join(_DATA_DIR, "testing_output.pickle"),
-        eval_labels_file=os.path.join(_DATA_DIR, "testing_labels.pickle"),
+        training_data_file=os.path.join(_DATA_DIR, "ceed_training_output.pickle"),
+        training_labels_file=os.path.join(_DATA_DIR, "ceed_training_labels.pickle"),
+        testing_data_file=os.path.join(_DATA_DIR, "ceed_testing_output.pickle"),
+        eval_labels_file=os.path.join(_DATA_DIR, "ceed_testing_labels.pickle"),
     )
 
     return predictor.run()

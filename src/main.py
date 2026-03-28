@@ -12,7 +12,7 @@ from utils import FocalLoss, SafeNetDataset
 from models import QuakeMamba2
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
-DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "data"
+DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "california" / "data" / "CEED" / "processed"
 DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_quake_mamba2.pth"
 
 
@@ -516,12 +516,12 @@ if __name__ == "__main__":
         default=str(DEFAULT_DATA_DIR),
         help="Directory containing training/validation pickle files",
     )
-    parser.add_argument("--train_features_file", type=str, default="training_output.pickle", help="Training features pickle file")
-    parser.add_argument("--train_labels_file", type=str, default="training_labels.pickle", help="Training labels pickle file")
-    parser.add_argument("--val_features_file", type=str, default="testing_output.pickle", help="Validation features pickle file")
-    parser.add_argument("--val_labels_file", type=str, default="testing_labels.pickle", help="Validation labels pickle file")
-    parser.add_argument("--test_features_file", type=str, default="testing_output.pickle", help="Test features pickle file")
-    parser.add_argument("--test_labels_file", type=str, default="testing_labels.pickle", help="Test labels pickle file")
+    parser.add_argument("--train_features_file", type=str, default="ceed_training_output.pickle", help="Training features pickle file")
+    parser.add_argument("--train_labels_file", type=str, default="ceed_training_labels.pickle", help="Training labels pickle file")
+    parser.add_argument("--val_features_file", type=str, default="ceed_testing_output.pickle", help="Validation features pickle file")
+    parser.add_argument("--val_labels_file", type=str, default="ceed_testing_labels.pickle", help="Validation labels pickle file")
+    parser.add_argument("--test_features_file", type=str, default="ceed_testing_output.pickle", help="Test features pickle file")
+    parser.add_argument("--test_labels_file", type=str, default="ceed_testing_labels.pickle", help="Test labels pickle file")
     parser.add_argument("--skip_test_eval", action="store_true", help="Disable test evaluation during training")
     parser.add_argument("--train_csv_file", type=str, default="training_data.csv", help="Training CSV source for label generation")
     parser.add_argument("--val_csv_file", type=str, default="testing_data.csv", help="Validation CSV source for label generation")

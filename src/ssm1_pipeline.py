@@ -5,10 +5,10 @@ main.py — SafeNet-like model pipeline entry point.
 Produces data/ssm1_output.pickle — input for the MLP fusion layer.
 
 Pipeline:
-  1. Preprocessing  (run_preprocessing.sh)
+  1. Preprocessing  (run_pre_processing.sh)
   2. Load data      (MultimodalSafeNetDataset)
   3. Embedding      (SafeNetEmbeddings._encode)
-  4. SpatialSSM     → (B, 85, 128)
+  4. SpatialSSM     → (B, 64, 128)
   5. Save           → data/ssm1_output.pickle
 """
 
@@ -36,7 +36,7 @@ EMBED_DIM    = 32
 FUSED_DIM    = EMBED_DIM * 2   # 64
 
 SEQ_LEN      = 10
-NUM_PATCHES  = 85
+NUM_PATCHES  = 64
 
 SSM_D_MODEL  = 128
 SSM_D_STATE  = 16
@@ -44,13 +44,13 @@ SSM_N_LAYERS = 2
 
 NUM_CLASSES  = 4
 
-DATA_DIR             = Path(__file__).parent.parent / 'data'
-TRAINING_PICKLE      = os.path.join(DATA_DIR, "training_output.pickle")
-TESTING_PICKLE       = os.path.join(DATA_DIR, "testing_output.pickle")
-TRAINING_LABELS      = os.path.join(DATA_DIR, "training_labels.pickle")
-TESTING_LABELS       = os.path.join(DATA_DIR, "testing_labels.pickle")
+DATA_DIR             = Path(__file__).resolve().parent / 'data-processing' / 'california' / 'data' / 'CEED' / 'processed'
+TRAINING_PICKLE      = os.path.join(DATA_DIR, "ceed_training_output.pickle")
+TESTING_PICKLE       = os.path.join(DATA_DIR, "ceed_testing_output.pickle")
+TRAINING_LABELS      = os.path.join(DATA_DIR, "ceed_training_labels.pickle")
+TESTING_LABELS       = os.path.join(DATA_DIR, "ceed_testing_labels.pickle")
 SSM1_OUTPUT_PICKLE   = os.path.join(DATA_DIR, "ssm1_output.pickle")
-PREPROCESSING_SCRIPT = os.path.join(Path(__file__).parent, "data-processing/safenet/run_preprocessing.sh")
+PREPROCESSING_SCRIPT = os.path.join(Path(__file__).parent, "data-processing/california/run_pre_processing.sh")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -73,8 +73,8 @@ def smoke_test_spatial_ssm():
     fake_fused = torch.randn(batch, SEQ_LEN, NUM_PATCHES, FUSED_DIM, device=DEVICE)
 
     B, T, P, D = fake_fused.shape
-    x = fake_fused.permute(0, 2, 1, 3).reshape(B * P, T, D)  # (B*85, T, 64)
-    out = model(x).reshape(B, P, SSM_D_MODEL)                 # (B, 85, 128)
+    x = fake_fused.permute(0, 2, 1, 3).reshape(B * P, T, D)  # (B*64, T, 64)
+    out = model(x).reshape(B, P, SSM_D_MODEL)                 # (B, 64, 128)
 
     print(f"  Input  shape : {fake_fused.shape}")
     print(f"  Output shape : {out.shape}    <- (batch, patches, d_model)")
@@ -150,19 +150,19 @@ def run_pipeline(skip_preprocessing=False, validate=False):
 
         with torch.no_grad():
             for i, (inputs, label) in enumerate(loader):
-                catalog = inputs["catalog"].to(DEVICE)  # (B, 10, 86, 282)
-                maps    = inputs["maps"].to(DEVICE)     # (B, 10, 85, 50, 50, 5)
+                catalog = inputs["catalog"].to(DEVICE)  # (B, 10, 65, 282)
+                maps    = inputs["maps"].to(DEVICE)     # (B, 10, 64, 50, 50, 5)
 
                 # Embed
                 z, _ = embedder._encode({
                     "catalog": catalog,
                     "maps":    maps,
-                })                                      # (B, T, 85, 64)
+                })                                      # (B, T, 64, 64)
 
                 # SSM (per-patch)
                 B, T, P, D = z.shape
                 x = z.permute(0, 2, 1, 3).reshape(B * P, T, D)
-                ssm_out = spatial_ssm(x).reshape(B, P, SSM_D_MODEL)  # (B, 85, 128)
+                ssm_out = spatial_ssm(x).reshape(B, P, SSM_D_MODEL)  # (B, 64, 128)
 
                 outputs.append(ssm_out.cpu())
                 labels.append(label)
@@ -175,7 +175,7 @@ def run_pipeline(skip_preprocessing=False, validate=False):
     train_out, train_labels = process_loader(train_loader, "train")
     test_out,  test_labels  = process_loader(test_loader,  "test")
 
-    print(f"\n  Train SSM output shape : {train_out.shape}   <- (samples, 85, 128)")
+    print(f"\n  Train SSM output shape : {train_out.shape}   <- (samples, 64, 128)")
     print(f"  Test  SSM output shape : {test_out.shape}")
 
     # ── Step 5: Save to pickle ────────────────────────────────────────
@@ -186,12 +186,12 @@ def run_pipeline(skip_preprocessing=False, validate=False):
     os.makedirs(DATA_DIR, exist_ok=True)
     output = {
         "train": {
-            "ssm1_out": train_out.numpy(),    # (N_train, 85, 128)
-            "labels":   train_labels.numpy()  # (N_train, 85)
+            "ssm1_out": train_out.numpy(),    # (N_train, 64, 128)
+            "labels":   train_labels.numpy()  # (N_train, 64)
         },
         "test": {
-            "ssm1_out": test_out.numpy(),     # (N_test, 85, 128)
-            "labels":   test_labels.numpy()   # (N_test, 85)
+            "ssm1_out": test_out.numpy(),     # (N_test, 64, 128)
+            "labels":   test_labels.numpy()   # (N_test, 64)
         },
         "config": {
             "d_model":     SSM_D_MODEL,

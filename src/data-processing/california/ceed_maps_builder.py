@@ -98,7 +98,9 @@ class CEEDmaps:
         """
         # Skip loading all DBF attributes (columns=[]) to avoid "year 0 is out of range" 
         # errors on SLURM clusters caused by invalid dates in the USGS shapefile.
-        faults = gpd.read_file(self.faults_path, columns=[]).to_crs("EPSG:4326")
+        faults = gpd.read_file(self.faults_path, columns=[])
+        if faults.crs != "EPSG:4326" and faults.crs is not None:
+            faults = faults.to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         faults = faults.clip(bbox)
@@ -156,7 +158,9 @@ class CEEDmaps:
             3D numpy array of shape (3, grid_size, grid_size) with binary masks for each lithology class.    
         """
         # Only load text columns to avoid "year 0 is out of range" DBF parsing errors on SLURM
-        gdf = gpd.read_file(self.geology_path, columns=['ORIG_LABEL', 'GENERALIZE', 'SGMC_LABEL']).to_crs("EPSG:4326")
+        gdf = gpd.read_file(self.geology_path, columns=['ORIG_LABEL', 'GENERALIZE', 'SGMC_LABEL'])
+        if gdf.crs != "EPSG:4326" and gdf.crs is not None:
+            gdf = gdf.to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         gdf = gdf.clip(bbox)

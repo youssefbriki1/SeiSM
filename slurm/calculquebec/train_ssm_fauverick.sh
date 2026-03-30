@@ -5,8 +5,8 @@
 #SBATCH --partition=nodegpupool
 #SBATCH --nodes=1
 #SBATCH --time=4:00:00
-#SBATCH --output=/scratch/fauverick/ift3710/slurm_logs/%x-%j.out
-#SBATCH --error=/scratch/fauverick/ift3710/slurm_logs/%x-%j.err
+#SBATCH --output=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.out
+#SBATCH --error=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.err
 #SBATCH --export=NONE          
 set -euo pipefail
 
@@ -19,7 +19,7 @@ module load cuda/12.6
 export CC=$(which gcc)
 export CXX=$(which g++)
 export CUDA_HOME=${EBROOTCUDA:-$CUDA_HOME}
-export HOME=${HOME:-/scratch/fauverick}
+export HOME=${HOME:-/project/60004/fauverick}
 echo "[env] CC=$CC  CXX=$CXX  CUDA_HOME=$CUDA_HOME"
 
 # ---- Clear stale Triton JIT cache (may have cached /bin/gcc path) ----
@@ -27,7 +27,7 @@ rm -rf $HOME/.triton/cache 2>/dev/null || true
 rm -rf /tmp/triton_* 2>/dev/null || true
 
 # ---- Project paths ----
-PROJECT_ROOT=/scratch/fauverick/ift3710
+PROJECT_ROOT=/project/60004/fauverick/ift3710
 VENV_PY=$PROJECT_ROOT/.venv/bin/python
 DATA_DIR=$PROJECT_ROOT/src/data-processing/california/data/CEED/processed
 MAIN_PY=$PROJECT_ROOT/src/main_mutimodal.py
@@ -41,7 +41,7 @@ unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
 export PYTHONNOUSERSITE=1
 export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 
-# ---- Set WandB log directory under $SCRATCH ----
+# ---- Set WandB log directory under $PROJECT_ROOT ----
 export WANDB_DIR=$PROJECT_ROOT/wandb
 export WANDB_MODE=offline
 unset TRANSFORMERS_CACHE

@@ -5,8 +5,8 @@
 #SBATCH --partition=nodegpupool
 #SBATCH --nodes=1
 #SBATCH --time=4:00:00
-#SBATCH --output=/scratch/fauverick/ift3710/slurm_logs/%x-%j.out
-#SBATCH --error=/scratch/fauverick/ift3710/slurm_logs/%x-%j.err
+#SBATCH --output=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.out
+#SBATCH --error=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.err
 #SBATCH --export=NONE          
 set -euo pipefail
 
@@ -14,12 +14,13 @@ module --force purge
 module load StdEnv/2023
 module load gcc/12.3
 module load cuda/12.6
+module load arrow/22.0.0
 
 # ---- Tell Triton / pip to use the module-loaded GCC, not /bin/gcc ----
 export CC=$(which gcc)
 export CXX=$(which g++)
 export CUDA_HOME=${EBROOTCUDA:-$CUDA_HOME}
-export HOME=${HOME:-/scratch/fauverick}
+export HOME=${HOME:-/project/60004/fauverick}
 echo "[env] CC=$CC  CXX=$CXX  CUDA_HOME=$CUDA_HOME"
 
 # ---- Clear stale Triton JIT cache (may have cached /bin/gcc path) ----
@@ -27,21 +28,21 @@ rm -rf $HOME/.triton/cache 2>/dev/null || true
 rm -rf /tmp/triton_* 2>/dev/null || true
 
 # ---- Project paths ----
-PROJECT_ROOT=/scratch/fauverick/ift3710
+PROJECT_ROOT=/project/60004/fauverick/ift3710
 VENV_PY=$PROJECT_ROOT/.venv/bin/python
-DATA_DIR=$PROJECT_ROOT/src/data-processing/data
-MAIN_PY=$PROJECT_ROOT/src/main_multimodal.py
+DATA_DIR=$PROJECT_ROOT/src/data-processing/california/data/CEED/processed
+MAIN_PY=$PROJECT_ROOT/src/main_mutimodal.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 
 mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"
 mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 
-# ---- Disable Python environment variables injected by CVMFS ----
-unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
-export PYTHONNOUSERSITE=1
+# ---- Allow ComputeCanada LMOD to manage Python environment variables ----
+# unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
+# export PYTHONNOUSERSITE=1
 export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 
-# ---- Set WandB log directory under $SCRATCH ----
+# ---- Set WandB log directory under $PROJECT_ROOT ----
 export WANDB_DIR=$PROJECT_ROOT/wandb
 export WANDB_MODE=offline
 unset TRANSFORMERS_CACHE

@@ -96,9 +96,9 @@ class CEEDmaps:
         Returns:
             2D numpy array of shape (grid_size, grid_size) with normalized distances to faults.
         """
-        
-
-        faults = gpd.read_file(self.faults_path).to_crs("EPSG:4326")
+        # Skip loading DBF attributes to avoid date parsing crashes on SLURM
+        # Datasets are natively EPSG:4326. Avoiding .to_crs() bypasses pyproj entirely.
+        faults = gpd.read_file(self.faults_path, columns=[])
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         faults = faults.clip(bbox)
@@ -155,8 +155,9 @@ class CEEDmaps:
         Returns:
             3D numpy array of shape (3, grid_size, grid_size) with binary masks for each lithology class.    
         """
-    
-        gdf = gpd.read_file(self.geology_path).to_crs("EPSG:4326")
+        # Skip non-lithology attributes to avoid DBF date parsing crashes on SLURM. 
+        # The file is natively EPSG:4326. 
+        gdf = gpd.read_file(self.geology_path, columns=['ORIG_LABEL', 'GENERALIZE', 'SGMC_LABEL'])
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         gdf = gdf.clip(bbox)

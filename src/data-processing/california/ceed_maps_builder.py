@@ -8,19 +8,21 @@ Output:
 from pathlib import Path
 
 import os
-import glob
-# --- ComputeCanada / SLURM autoconfigure PROJ data directory ---
-# When pyproj handles shapefile CRSs, it requires system PROJ data
-if "EBROOTPROJ" in os.environ:
-    proj_dir = os.path.join(os.environ["EBROOTPROJ"], "share", "proj")
-    os.environ.setdefault("PROJ_DATA", proj_dir)
-    os.environ.setdefault("PROJ_LIB", proj_dir)
-else:
-    # Fallback to scanning ComputeCanada module paths if loaded via arrow
-    candidates = glob.glob("/cvmfs/soft.computecanada.ca/easybuild/software/*/Core/proj/*/share/proj")
-    if candidates and not "PROJ_DATA" in os.environ:
-        os.environ["PROJ_DATA"] = candidates[-1]
-        os.environ["PROJ_LIB"] = candidates[-1]
+import site
+# --- Fix SLURM/pyproj PROJ database isolation ---
+# Pyproj on SLURM often misses its own PROJ definitions. 
+# Force it to use the pip-installed bundled database to avoid libproj version conflicts.
+for site_pkg in site.getsitepackages() + [site.getusersitepackages()]:
+    bundled_proj_dir = os.path.join(site_pkg, "pyproj", "proj_dir", "share", "proj")
+    if os.path.exists(bundled_proj_dir):
+        os.environ["PROJ_DATA"] = bundled_proj_dir
+        os.environ["PROJ_LIB"] = bundled_proj_dir
+        try:
+            import pyproj
+            pyproj.datadir.set_data_dir(bundled_proj_dir)
+        except Exception:
+            pass
+        break
 
 from ceed_loader import CEEDdataset
 import numpy as np
@@ -111,11 +113,9 @@ class CEEDmaps:
         Returns:
             2D numpy array of shape (grid_size, grid_size) with normalized distances to faults.
         """
-        # Skip loading all DBF attributes (columns=[]) to avoid "year 0 is out of range" 
-        # errors on SLURM clusters caused by invalid dates in the USGS shapefile.
+        # Skip loading DBF attributes to avoid date parsing crashes on SLURM
+        # Datasets are natively EPSG:4326. Avoiding .to_crs() bypasses pyproj entirely.
         faults = gpd.read_file(self.faults_path, columns=[])
-        if faults.crs != "EPSG:4326" and faults.crs is not None:
-            faults = faults.to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         faults = faults.clip(bbox)
@@ -172,10 +172,9 @@ class CEEDmaps:
         Returns:
             3D numpy array of shape (3, grid_size, grid_size) with binary masks for each lithology class.    
         """
-        # Only load text columns to avoid "year 0 is out of range" DBF parsing errors on SLURM
+        # Skip non-lithology attributes to avoid DBF date parsing crashes on SLURM. 
+        # The file is natively EPSG:4326. 
         gdf = gpd.read_file(self.geology_path, columns=['ORIG_LABEL', 'GENERALIZE', 'SGMC_LABEL'])
-        if gdf.crs != "EPSG:4326" and gdf.crs is not None:
-            gdf = gdf.to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         gdf = gdf.clip(bbox)

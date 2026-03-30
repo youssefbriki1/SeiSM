@@ -6,7 +6,8 @@ cd ift3710
 module load gcc arrow/22.0.0
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -U pip setuptools wheel
+pip install -U pip "setuptools<70.0.0" wheel "Cython<3"
+pip install "pyproj<3.6.0" --no-build-isolation
 pip install -r requirements.txt
 
 # run processing pipeline

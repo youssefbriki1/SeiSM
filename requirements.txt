@@ -35,3 +35,4 @@ tensorboard
 # Utilities
 tqdm
 pytest
+typing_extensions

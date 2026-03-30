@@ -14,6 +14,7 @@ module --force purge
 module load StdEnv/2023
 module load gcc/12.3
 module load cuda/12.6
+module load arrow/22.0.0
 
 # ---- Tell Triton / pip to use the module-loaded GCC, not /bin/gcc ----
 export CC=$(which gcc)

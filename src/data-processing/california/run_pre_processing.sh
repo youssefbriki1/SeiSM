@@ -17,6 +17,10 @@ echo "=============================================="
 echo "Working directory: $(pwd)"
 echo ""
 
+# Attempt to load Compute Canada dependencies if available to populate $EBROOTPROJ
+if command -v module &> /dev/null; then
+    module load gcc arrow/22.0.0
+fi
 # Step 1: Download CEED dataset if missing
 if [ ! -f "data/CEED/events.csv" ]; then
     echo "[Step 1] events.csv not found. Downloading CEED dataset..."

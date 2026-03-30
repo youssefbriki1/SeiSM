@@ -602,11 +602,13 @@ def build_labels(raw_csv, patch_csv, output_pickle, target_years):
 
 if __name__ == '__main__':
                                       
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    INPUT_DIR = Path(__file__).parent / 'dataset'
+    OUTPUT_DIR = Path(__file__).parent / 'data'
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    raw_csv = os.path.join(DATA_DIR, 'training_data.csv')
-    patch_csv = os.path.join(DATA_DIR, 'png_list_to_patchxy.csv')
-    output_pickle = os.path.join(DATA_DIR, 'training_output.pickle')
+    raw_csv = os.path.join(OUTPUT_DIR, 'training_data.csv')
+    patch_csv = os.path.join(INPUT_DIR, 'png_list_to_patchxy.csv')
+    output_pickle = os.path.join(OUTPUT_DIR, 'training_output.pickle')
     norm_start = 1971  # earliest year with a full window in the data
     target_years = list(range(1979, 2011)) #1979 - 2010
 
@@ -617,12 +619,12 @@ if __name__ == '__main__':
             sys.exit(1)
 
     build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years)
-    build_labels(os.path.join(DATA_DIR, 'training_data.csv'), patch_csv,
-                 os.path.join(DATA_DIR, 'training_labels.pickle'), target_years)
+    build_labels(os.path.join(OUTPUT_DIR, 'training_data.csv'), patch_csv,
+                 os.path.join(OUTPUT_DIR, 'training_labels.pickle'), target_years)
 
-    raw_csv = os.path.join(DATA_DIR, 'testing_data.csv')
-    patch_csv = os.path.join(DATA_DIR, 'png_list_to_patchxy.csv')
-    output_pickle = os.path.join(DATA_DIR, 'testing_output.pickle') #this is what needs to match eqs_and_png.pickle
+    raw_csv = os.path.join(OUTPUT_DIR, 'testing_data.csv')
+    patch_csv = os.path.join(INPUT_DIR, 'png_list_to_patchxy.csv')
+    output_pickle = os.path.join(OUTPUT_DIR, 'testing_output.pickle') #this is what needs to match eqs_and_png.pickle
     norm_start = 2002 # earliest year with a full window in the data
     target_years = list(range(2011, 2021)) #2011 - 2020
 
@@ -633,5 +635,5 @@ if __name__ == '__main__':
             sys.exit(1)
 
     build_pickle(raw_csv, patch_csv, output_pickle, norm_start, target_years)
-    build_labels(os.path.join(DATA_DIR, 'testing_data.csv'), patch_csv,
-                 os.path.join(DATA_DIR, 'testing_labels.pickle'), target_years)
+    build_labels(os.path.join(OUTPUT_DIR, 'testing_data.csv'), patch_csv,
+                 os.path.join(OUTPUT_DIR, 'testing_labels.pickle'), target_years)

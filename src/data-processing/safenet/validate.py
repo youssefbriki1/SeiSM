@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 MAPS_DIR = Path(__file__).parent / 'maps'
-DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+DATA_DIR = Path(__file__).parent / 'data'
 REF_PICKLE = os.path.join(MAPS_DIR, 'eqs_and_png_data_for_eval_10y_in_11_16.pickle')
 OUR_PICKLE = os.path.join(DATA_DIR, 'testing_output.pickle')
 

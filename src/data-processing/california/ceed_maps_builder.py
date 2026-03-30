@@ -96,10 +96,9 @@ class CEEDmaps:
         Returns:
             2D numpy array of shape (grid_size, grid_size) with normalized distances to faults.
         """
-        
-        # Use engine="fiona" or ignore geometry attributes to avoid Pyogrio "year 0 is out of range" 
-        # datetime parsing bugs on SLURM clusters for invalid dates in the shapefile DBF.
-        faults = gpd.read_file(self.faults_path, engine="fiona").to_crs("EPSG:4326")
+        # Skip loading all DBF attributes (columns=[]) to avoid "year 0 is out of range" 
+        # errors on SLURM clusters caused by invalid dates in the USGS shapefile.
+        faults = gpd.read_file(self.faults_path, columns=[]).to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         faults = faults.clip(bbox)
@@ -156,8 +155,8 @@ class CEEDmaps:
         Returns:
             3D numpy array of shape (3, grid_size, grid_size) with binary masks for each lithology class.    
         """
-        # Use engine="fiona" to avoid "year 0 is out of range" DBF parsing errors on SLURM
-        gdf = gpd.read_file(self.geology_path, engine="fiona").to_crs("EPSG:4326")
+        # Only load text columns to avoid "year 0 is out of range" DBF parsing errors on SLURM
+        gdf = gpd.read_file(self.geology_path, columns=['ORIG_LABEL', 'GENERALIZE', 'SGMC_LABEL']).to_crs("EPSG:4326")
 
         bbox = box(self.xmin, self.ymin, self.xmax, self.ymax)
         gdf = gdf.clip(bbox)

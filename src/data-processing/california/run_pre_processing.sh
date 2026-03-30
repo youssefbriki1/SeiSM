@@ -20,7 +20,7 @@ echo ""
 # Step 1: Download CEED dataset if missing
 if [ ! -f "data/CEED/events.csv" ]; then
     echo "[Step 1] events.csv not found. Downloading CEED dataset..."
-    uv run ceed_loader.py
+    python3 ceed_loader.py
     echo "[Step 1] Download complete."
 else
     echo "[Step 1] events.csv already exists. Skipping download."
@@ -32,7 +32,7 @@ echo ""
 echo "[Step 2] Running full pre-processing pipeline..."
 export PROJ_LIB=${EBROOTPROJ}/share/proj
 export PROJ_DATA=${EBROOTPROJ}/share/proj
-uv run preprocess_full_pipeline.py
+python3 preprocess_full_pipeline.py
 echo "[Step 2] Pre-processing complete."
 
 echo ""

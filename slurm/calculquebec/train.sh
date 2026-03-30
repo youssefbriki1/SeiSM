@@ -30,7 +30,7 @@ rm -rf /tmp/triton_* 2>/dev/null || true
 # ---- Project paths ----
 PROJECT_ROOT=/project/60004/fauverick/ift3710
 VENV_PY=$PROJECT_ROOT/.venv/bin/python
-DATA_DIR=$PROJECT_ROOT/src/data-processing/california/data/CEED/processed
+DATA_DIR=$PROJECT_ROOT/src/data-processing/safenet/data
 MAIN_PY=$PROJECT_ROOT/src/main_mutimodal.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 

@@ -7,6 +7,21 @@ Output:
 """
 from pathlib import Path
 
+import os
+import glob
+# --- ComputeCanada / SLURM autoconfigure PROJ data directory ---
+# When pyproj handles shapefile CRSs, it requires system PROJ data
+if "EBROOTPROJ" in os.environ:
+    proj_dir = os.path.join(os.environ["EBROOTPROJ"], "share", "proj")
+    os.environ.setdefault("PROJ_DATA", proj_dir)
+    os.environ.setdefault("PROJ_LIB", proj_dir)
+else:
+    # Fallback to scanning ComputeCanada module paths if loaded via arrow
+    candidates = glob.glob("/cvmfs/soft.computecanada.ca/easybuild/software/*/Core/proj/*/share/proj")
+    if candidates and not "PROJ_DATA" in os.environ:
+        os.environ["PROJ_DATA"] = candidates[-1]
+        os.environ["PROJ_LIB"] = candidates[-1]
+
 from ceed_loader import CEEDdataset
 import numpy as np
 import pandas as pd

@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 def main():
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'src/data-processing/safenet/data'
     input_file = os.path.join(DATA_DIR, "1970-2021_11_EARTH_final_with_patchnum.csv")
     
     print(f"Loading {input_file}...")

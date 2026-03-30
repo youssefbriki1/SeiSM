@@ -164,7 +164,7 @@ class SafeNetEmbeddings(nn.Module):
         map_channels=5,
         catalog_features=282,
         embed_dim=32,
-        num_patches=64,
+        num_patches=85,
     ):
         super().__init__()
         self.num_patches = num_patches

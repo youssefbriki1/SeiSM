@@ -549,7 +549,7 @@ if __name__ == "__main__":
     parser.add_argument("--patch_csv_file", type=str, default="png_list_to_patchxy.csv", help="Patch mapping CSV (x,y order)")
     parser.add_argument("--disable_csv_label_fallback", action="store_true", help="Disable CSV-based label generation fallback")
     parser.add_argument("--label_mag_bins", type=str, default="5,6,7", help="Comma-separated magnitude bins for class labels")
-    parser.add_argument("--train_target_year_start", type=int, default=1970, help="Target start year for training labels")
+    parser.add_argument("--train_target_year_start", type=int, default=1979, help="Target start year for training labels")
     parser.add_argument("--val_target_year_start", type=int, default=2011, help="Target start year for validation labels")
     parser.add_argument("--test_target_year_start", type=int, default=2011, help="Target start year for test labels")
     

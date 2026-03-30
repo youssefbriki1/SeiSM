@@ -7,23 +7,6 @@ Output:
 """
 from pathlib import Path
 
-import os
-import site
-# --- Fix SLURM/pyproj PROJ database isolation ---
-# Pyproj on SLURM often misses its own PROJ definitions. 
-# Force it to use the pip-installed bundled database to avoid libproj version conflicts.
-for site_pkg in site.getsitepackages() + [site.getusersitepackages()]:
-    bundled_proj_dir = os.path.join(site_pkg, "pyproj", "proj_dir", "share", "proj")
-    if os.path.exists(bundled_proj_dir):
-        os.environ["PROJ_DATA"] = bundled_proj_dir
-        os.environ["PROJ_LIB"] = bundled_proj_dir
-        try:
-            import pyproj
-            pyproj.datadir.set_data_dir(bundled_proj_dir)
-        except Exception:
-            pass
-        break
-
 from ceed_loader import CEEDdataset
 import numpy as np
 import pandas as pd

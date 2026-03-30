@@ -30,7 +30,7 @@ rm -rf /tmp/triton_* 2>/dev/null || true
 PROJECT_ROOT=/scratch/fauverick/ift3710
 VENV_PY=$PROJECT_ROOT/.venv/bin/python
 DATA_DIR=$PROJECT_ROOT/src/data-processing/data
-MAIN_PY=$PROJECT_ROOT/src/main.py
+MAIN_PY=$PROJECT_ROOT/src/main_multimodal.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 
 mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"

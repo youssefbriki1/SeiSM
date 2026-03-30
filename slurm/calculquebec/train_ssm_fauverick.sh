@@ -37,9 +37,9 @@ LOG_DIR=$PROJECT_ROOT/slurm_logs
 mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"
 mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 
-# ---- Disable Python environment variables injected by CVMFS ----
-unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
-export PYTHONNOUSERSITE=1
+# ---- Allow ComputeCanada LMOD to manage Python environment variables ----
+# unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
+# export PYTHONNOUSERSITE=1
 export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 
 # ---- Set WandB log directory under $PROJECT_ROOT ----

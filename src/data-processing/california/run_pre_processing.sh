@@ -30,6 +30,8 @@ echo ""
 
 # Step 2: Run full pre-processing pipeline
 echo "[Step 2] Running full pre-processing pipeline..."
+export PROJ_LIB=${EBROOTPROJ}/share/proj
+export PROJ_DATA=${EBROOTPROJ}/share/proj
 python3 preprocess_full_pipeline.py
 echo "[Step 2] Pre-processing complete."
 

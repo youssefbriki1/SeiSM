@@ -452,13 +452,29 @@ def build_pickle(df, output_pickle, norm_start, target_years):
         print(f"  Target year {target_yr}: assembled (10, {n_total}, 282)")
 
     # Load png data for the full history range (10 years before first target year)
+    # This gives len(eq_data) + 9 png entries for sliding-window alignment
+    script_dir = Path(__file__).resolve().parent
+    patches_dir = script_dir / "data" / "processed" / "cal_maps"
     png_start = min(target_years) - 9
     png_end = max(target_years)
+
+    # Verify all needed patch files exist
+    missing = [yr for yr in range(png_start, png_end + 1)
+               if not (patches_dir / f"patches_{yr}.npy").exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"Missing patch .npy files for years: {missing}. "
+            f"Run run_map_pipeline({png_start}, {png_end}) first."
+        )
+
     for yr in range(png_start, png_end + 1):
-        png = np.load(f'data/processed/cal_maps/patches_{yr}.npy')
+        png = np.load(patches_dir / f"patches_{yr}.npy")
         png = png.transpose(0, 2, 3, 1)  # (N, 5, H, W) → (N, H, W, 5)
         png_data.append(png)
-    print(f"  Loaded png data for years {png_start}-{png_end} ({len(png_data)} entries)")
+
+    expected_png = len(eq_data) + 9
+    print(f"  Loaded png data for years {png_start}-{png_end} ({len(png_data)} entries, "
+          f"expected {expected_png} for sliding-window alignment)")
 
 
     # ── Step 4: Save ──────────────────────────────────────────────────

@@ -36,3 +36,8 @@ tensorboard
 tqdm
 pytest
 typing_extensions
+
+#Safenet
+Pillow
+matplotlib
+scipy

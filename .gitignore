@@ -7,3 +7,4 @@ src/wandb
 checkpoints/
 __pycache__/
 **/__pycache__/
+env/

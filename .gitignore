@@ -7,3 +7,10 @@ src/wandb
 __pycache__/
 **/__pycache__/
 wandb/
+env/
+*.pth
+*.h5
+slurm_logs*
+*.ipynb_checkpoints
+checkpoints/
+*.zip

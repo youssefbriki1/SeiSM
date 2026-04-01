@@ -112,9 +112,9 @@ def evaluate_split(model, dataloader, criterion, device, desc: str):
         for x, y in split_bar:
             x, y = x.to(device), y.to(device)
 
-            with torch.amp.autocast('cuda'):
-                preds = model(x)
-                loss = criterion(preds, y)
+            # FULL FP32 PRECISION (No Autocast)
+            preds = model(x)
+            loss = criterion(preds, y)
                 
             split_loss += loss.item()
 
@@ -170,9 +170,6 @@ def train(args):
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    
-    # Updated AMP Scaler syntax
-    scaler = torch.amp.GradScaler('cuda')
 
     # --- W&B Setup ---
     wandb = None
@@ -212,16 +209,13 @@ def train(args):
                 x, y = x.to(device), y.to(device)
                 optimizer.zero_grad()
                 
-                # Updated autocast syntax
-                with torch.amp.autocast('cuda'):
-                    preds = model(x)
-                    loss = criterion(preds, y)
+                # FULL FP32 PRECISION (No Autocast or Scaler)
+                preds = model(x)
+                loss = criterion(preds, y)
                 
-                scaler.scale(loss).backward()
-                scaler.unscale_(optimizer)
+                loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                scaler.step(optimizer)
-                scaler.update()
+                optimizer.step()
                 
                 train_loss += loss.item()
                 global_step += 1

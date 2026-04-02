@@ -8,9 +8,13 @@
 #SBATCH --export=NONE          
 
 module load StdEnv/2023 gcc/12.3 python/3.10 arrow/14
+
+mkdir -p /scratch/brikiyou/triton_cache
+export TRITON_CACHE_DIR=/scratch/brikiyou/triton_cache
+
 PROJECT_ROOT=/scratch/brikiyou/ift3710
 VENV_PY=$PROJECT_ROOT/env/py1013/bin/python
-MAIN_PY=$PROJECT_ROOT/src/main.py
+MAIN_PY=$PROJECT_ROOT/src/waveform_train.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 
 mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"

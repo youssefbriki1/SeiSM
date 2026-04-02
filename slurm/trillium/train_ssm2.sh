@@ -2,7 +2,6 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1
 #SBATCH --time=2:00:00
-#SBATCH -p debug 
 #SBATCH --output=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.out
 #SBATCH --error=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.err
 #SBATCH --export=NONE          

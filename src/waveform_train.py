@@ -187,7 +187,7 @@ def train(args):
                 config=vars(args),
                 mode=args.wandb_mode
             )
-            wandb.watch(model, log="all")
+            wandb.watch(model)
         except ImportError:
             print("W&B not installed. Continuing without logging.")
     else:

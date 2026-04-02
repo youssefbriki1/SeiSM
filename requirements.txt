@@ -1,6 +1,6 @@
 # Core ML
-torch
-numpy
+torch~=2.5.0
+numpy<2
 pandas
 scikit-learn
 scipy
@@ -14,9 +14,11 @@ causal-conv1d>=1.4.0
 # Hugging Face
 datasets
 huggingface_hub
+fsspec>=2023.5.0,<=2026.2.0
 
 # Geospatial
 geopandas
+pyproj<3.6.0
 rasterio
 shapely
 Pillow
@@ -33,3 +35,9 @@ tensorboard
 # Utilities
 tqdm
 pytest
+typing_extensions
+
+#Safenet
+Pillow
+matplotlib
+scipy

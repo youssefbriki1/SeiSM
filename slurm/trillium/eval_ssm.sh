@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=eval_ssm
-#SBATCH --output=slurm_logs/eval_ssm-%j.out
-#SBATCH --error=slurm_logs/eval_ssm-%j.err
+#SBATCH --output=/scratch/brikiyou/ift3710/slurm_logs/eval_ssm-%j.out
+#SBATCH --error=/scratch/brikiyou/ift3710/slurm_logs/eval_ssm-%j.err
 #SBATCH --time=00:20:00
 #SBATCH -p debug
 #SBATCH --nodes=1

@@ -294,7 +294,7 @@ if __name__ == "__main__":
         "--wandb_mode",
         type=str,
         choices=["online", "offline", "disabled"],
-        default="online",
+        default="offline",
         help="W&B mode: online, offline, or disabled",
     )
 

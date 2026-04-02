@@ -184,9 +184,10 @@ def train(args):
                 project=args.wandb_project,
                 entity=args.wandb_entity if args.wandb_entity else None,
                 name=args.wandb_run_name if args.wandb_run_name else None,
-                config=vars(args)
+                config=vars(args),
+                mode=args.wandb_mode
             )
-            wandb.watch(model, log="all", log_freq=args.wandb_log_freq)
+            wandb.watch(model, log="all")
         except ImportError:
             print("W&B not installed. Continuing without logging.")
     else:
@@ -289,8 +290,14 @@ if __name__ == "__main__":
     parser.add_argument("--wandb_project", type=str, default="quake-wave-mamba2", help="W&B project name")
     parser.add_argument("--wandb_entity", type=str, default="", help="W&B entity/team")
     parser.add_argument("--wandb_run_name", type=str, default="run-1", help="W&B run name")
-    parser.add_argument("--wandb_log_freq", type=int, default=50, help="Frequency for gradient logging")
-    
+    parser.add_argument(
+        "--wandb_mode",
+        type=str,
+        choices=["online", "offline", "disabled"],
+        default="online",
+        help="W&B mode: online, offline, or disabled",
+    )
+
     args = parser.parse_args()
     
     train(args)

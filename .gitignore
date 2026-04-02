@@ -14,3 +14,6 @@ slurm_logs*
 *.ipynb_checkpoints
 checkpoints/
 *.zip
+slurm_logs/
+.cache/
+wandb/

@@ -323,7 +323,7 @@ def train(args):
         if num_classes != 4:
             class_weights = torch.ones(num_classes, device=device)
         else:
-            class_weights = torch.tensor([0.1, 1.0, 5.0, 20.0], device=device)
+            class_weights = torch.tensor([1.0, 4.0, 15.0, 78.0], device=device)
         criterion = FocalLoss(alpha=class_weights, gamma=2.0)
         print("Using Focal Loss to handle class imbalance.")
     else:

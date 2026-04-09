@@ -222,6 +222,7 @@ def train(args: argparse.Namespace) -> None:
                 "model": args.model,
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
+                "grad_accum_steps": args.grad_accum_steps,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "hidden_size": args.hidden_size,
@@ -249,21 +250,26 @@ def train(args: argparse.Namespace) -> None:
             train_loss = 0.0
             train_correct = 0
             train_total = 0
+            optimizer.zero_grad()
 
-            for x, y in tqdm(train_loader, desc="Training"):
+            for i, (x, y) in enumerate(tqdm(train_loader, desc="Training")):
                 x, y = _to_device(x, device), y.to(device)
-                optimizer.zero_grad()
 
                 logits = model(x).reshape(-1, num_classes)   # (batch*85, classes)
                 y_flat = y.view(-1)                        # (batch*85,)
 
                 loss = criterion(logits, y_flat)
+                loss_item = loss.item()
+                loss = loss / args.grad_accum_steps
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                
+                if (i + 1) % args.grad_accum_steps == 0 or (i + 1) == len(train_loader):
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
 
                 preds = torch.argmax(logits, dim=1)
-                train_loss += loss.item()
+                train_loss += loss_item
                 train_correct += (preds == y_flat).sum().item()
                 train_total += y_flat.numel()
                 global_step += 1
@@ -271,7 +277,7 @@ def train(args: argparse.Namespace) -> None:
                 if wandb is not None:
                     wandb.log(
                         {
-                            "train/batch_loss": loss.item(),
+                            "train/batch_loss": loss_item,
                             "train/batch_error": 1.0 - (preds == y_flat).float().mean().item(),
                             "train/lr": optimizer.param_groups[0]["lr"],
                         },
@@ -368,9 +374,10 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test_eval", action="store_true")
 
     # Training hyper-parameters
-    parser.add_argument("--epochs",       type=int,   default=50)
-    parser.add_argument("--batch_size",   type=int,   default=16)
-    parser.add_argument("--lr",           type=float, default=1e-3)
+    parser.add_argument("--epochs",     type=int,   default=20)
+    parser.add_argument("--batch_size", type=int,   default=32)
+    parser.add_argument("--grad_accum_steps", type=int, default=1)
+    parser.add_argument("--lr",         type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--num_classes",  type=int,   default=4)
 

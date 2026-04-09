@@ -68,6 +68,7 @@ srun --export=ALL "$VENV_PY" "$MAIN_PY" \
   --lr 1e-4 \
   --weight_decay 1e-4 \
   --batch_size 4 \
+  --grad_accum_steps 2 \
   --focal_gamma 3.0 \
   --focal_alpha 1.0 4.0 15.0 78.0 \
   "$@"

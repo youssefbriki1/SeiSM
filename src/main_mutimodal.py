@@ -359,6 +359,7 @@ def train(args):
                 "model": "SafeNetFull",
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
+                "grad_accum_steps": args.grad_accum_steps,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "embed_dim": args.embed_dim,
@@ -407,12 +408,12 @@ def train(args):
             train_correct = 0
             train_total = 0
             train_bar = tqdm(train_loader, desc="Training")
+            optimizer.zero_grad()
             
-            for inputs, y in train_bar:
+            for i, (inputs, y) in enumerate(train_bar):
                 # Move dict inputs to device
                 inputs = {k: v.to(device) for k, v in inputs.items()}
                 y = y.to(device)
-                optimizer.zero_grad()
                 
                 logits = model(inputs)  # (B, num_patches, num_classes)
 
@@ -423,22 +424,26 @@ def train(args):
                 y_flat = y.reshape(-1)
                 
                 loss = criterion(logits_flat, y_flat)
+                loss_item = loss.item()
+                loss = loss / args.grad_accum_steps
                 loss.backward()
                 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                if (i + 1) % args.grad_accum_steps == 0 or (i + 1) == len(train_loader):
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
                 
-                train_loss += loss.item()
+                train_loss += loss_item
                 preds = torch.argmax(logits_flat, dim=1)
                 train_correct += (preds == y_flat).sum().item()
                 train_total += y_flat.numel()
                 global_step += 1
-                train_bar.set_postfix({'loss': f"{loss.item():.4f}"})
+                train_bar.set_postfix({'loss': f"{loss_item:.4f}"})
 
                 if wandb is not None:
                     wandb.log(
                         {
-                            "train/batch_loss": loss.item(),
+                            "train/batch_loss": loss_item,
                             "train/batch_error": 1.0 - ((preds == y_flat).float().mean().item()),
                             "train/lr": optimizer.param_groups[0]["lr"],
                             "train/epoch": epoch + 1,
@@ -562,6 +567,7 @@ if __name__ == "__main__":
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size (smaller default due to map memory usage)")
+    parser.add_argument("--grad_accum_steps", type=int, default=1, help="Number of steps to accumulate gradients before updating weights")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
     parser.add_argument("--num_classes", type=int, default=4, help="Number of classification classes")

@@ -340,8 +340,10 @@ def train(args):
             name=args.wandb_run_name if args.wandb_run_name else None,
             mode=args.wandb_mode,
             config={
+                "model": "QuakeMamba2",
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
+                "grad_accum_steps": args.grad_accum_steps,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "use_focal_loss": args.use_focal_loss,
@@ -389,10 +391,11 @@ def train(args):
             train_correct = 0
             train_total = 0
             train_bar = tqdm(train_loader, desc="Training")
+            optimizer.zero_grad()
             
-            for x, y in train_bar:
-                x, y = x.to(device), y.to(device)
-                optimizer.zero_grad()
+            for i, (x, y) in enumerate(train_bar):
+                x = x.to(device)
+                y = y.to(device)
                 
                 logits = model(x)
 
@@ -403,22 +406,27 @@ def train(args):
                 y_flat = y.reshape(-1)
                 
                 loss = criterion(logits_flat, y_flat)
+                loss_item = loss.item()
+                
+                loss = loss / args.grad_accum_steps
                 loss.backward()
                 
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                if (i + 1) % args.grad_accum_steps == 0 or (i + 1) == len(train_loader):
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
                 
-                train_loss += loss.item()
+                train_loss += loss_item
                 preds = torch.argmax(logits_flat, dim=1)
                 train_correct += (preds == y_flat).sum().item()
                 train_total += y_flat.numel()
                 global_step += 1
-                train_bar.set_postfix({'loss': f"{loss.item():.4f}"})
+                train_bar.set_postfix({'loss': f"{loss_item:.4f}"})
 
                 if wandb is not None:
                     wandb.log(
                         {
-                            "train/batch_loss": loss.item(),
+                            "train/batch_loss": loss_item,
                             "train/batch_error": 1.0 - ((preds == y_flat).float().mean().item()),
                             "train/lr": optimizer.param_groups[0]["lr"],
                             "train/epoch": epoch + 1,
@@ -541,7 +549,8 @@ if __name__ == "__main__":
     
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training and validation")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
+    parser.add_argument("--grad_accum_steps", type=int, default=1, help="Number of steps to accumulate gradients before updating weights")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
     parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")

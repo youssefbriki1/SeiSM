@@ -64,8 +64,10 @@ srun --export=ALL "$VENV_PY" "$MAIN_PY" \
   --use_focal_loss \
   --wandb_mode offline \
   --train_target_year_start 1987 \
-  --epochs 100 \
-  --lr 1e-5 \
+  --epochs 50 \
+  --lr 1e-4 \
   --weight_decay 1e-4 \
   --batch_size 4 \
+  --focal_gamma 3.0 \
+  --focal_alpha 1.0 4.0 15.0 78.0 \
   "$@"

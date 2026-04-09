@@ -320,11 +320,15 @@ def train(args):
           f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
 
     if args.use_focal_loss:
-        if num_classes != 4:
+        if args.focal_alpha is not None:
+            if len(args.focal_alpha) != num_classes:
+                raise ValueError(f"--focal_alpha must have {num_classes} elements, got {len(args.focal_alpha)}")
+            class_weights = torch.tensor(args.focal_alpha, device=device)
+        elif num_classes != 4:
             class_weights = torch.ones(num_classes, device=device)
         else:
             class_weights = torch.tensor([1.0, 4.0, 15.0, 78.0], device=device)
-        criterion = FocalLoss(alpha=class_weights, gamma=2.0)
+        criterion = FocalLoss(alpha=class_weights, gamma=args.focal_gamma)
         print("Using Focal Loss to handle class imbalance.")
     else:
         criterion = nn.CrossEntropyLoss()
@@ -362,6 +366,8 @@ def train(args):
                 "transformer_layers": args.transformer_layers,
                 "dropout": args.dropout,
                 "use_focal_loss": args.use_focal_loss,
+                "focal_gamma": args.focal_gamma,
+                "focal_alpha": args.focal_alpha,
                 "data_dir": str(data_dir),
                 "train_features_path": str(train_features_path),
                 "train_labels_path": str(train_labels_path) if has_train_labels_file else None,
@@ -568,6 +574,8 @@ if __name__ == "__main__":
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")
+    parser.add_argument("--focal_gamma", type=float, default=2.0, help="Gamma parameter for Focal Loss")
+    parser.add_argument("--focal_alpha", type=float, nargs="+", default=None, help="Alpha class weights for Focal Loss, space separated (e.g., 1.0 4.0 15.0 78.0)")
     
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")

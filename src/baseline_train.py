@@ -183,9 +183,14 @@ def train(args: argparse.Namespace) -> None:
 
     # ── Loss ──────────────────────────────────────────────────────────────
     if args.use_focal_loss:
-        class_weights = torch.tensor([0.1, 1.0, 5.0, 20.0], device=device)
-        criterion = FocalLoss(alpha=class_weights, gamma=2.0)
-        print("Using Focal Loss.")
+        if args.focal_alpha is not None:
+            if len(args.focal_alpha) != 4:
+                raise ValueError(f"--focal_alpha must have 4 elements, got {len(args.focal_alpha)}")
+            class_weights = torch.tensor(args.focal_alpha, device=device)
+        else:
+            class_weights = torch.tensor([1.0, 4.0, 15.0, 78.0], device=device)
+        criterion = FocalLoss(alpha=class_weights, gamma=args.focal_gamma)
+        print("Using Focal Loss to handle class imbalance.")
     else:
         criterion = nn.CrossEntropyLoss()
         print("Using Cross Entropy Loss.")
@@ -226,6 +231,9 @@ def train(args: argparse.Namespace) -> None:
                 "num_patches": num_patches,
                 "num_features": num_features,
                 "use_focal_loss": args.use_focal_loss,
+                "focal_gamma": args.focal_gamma,
+                "focal_alpha": args.focal_alpha,
+                "data_dir": str(data_dir),
             },
         )
         wandb.watch(model, log="all", log_freq=args.wandb_log_freq)
@@ -371,8 +379,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers",  type=int,   default=2)
     parser.add_argument("--dropout",     type=float, default=0.3)
 
-    # Loss
+    # Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true")
+    parser.add_argument("--focal_gamma", type=float, default=2.0)
+    parser.add_argument("--focal_alpha", type=float, nargs="+", default=None)
 
     # W&B
     parser.add_argument("--disable_wandb",  action="store_true")

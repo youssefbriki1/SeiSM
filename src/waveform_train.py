@@ -5,25 +5,26 @@ from pathlib import Path
 import time
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from tqdm import tqdm
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from datasets import load_dataset
 
-# Import the new Mamba2 model
 from models import QuakeWaveMamba2
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
 
-# Paths to the cached Arrow directory and the downloaded CSV
-DEFAULT_ARROW_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03"
-DEFAULT_CSV_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test.csv"
+DEFAULT_ARROW_PATHS = [
+    "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
+    "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
+]
+DEFAULT_CSV_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv"
 DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_quake_mamba2_waveform.pth"
 
 # ==========================================
-# 1. ARROW WAVEFORM DATASET + CSV LABELS
+# 1. ARROW WAVEFORM DATASET (Single Directory)
 # ==========================================
 class ArrowSeismicDataset(torch.utils.data.Dataset):
     def __init__(self, arrow_dir_path: str, csv_path: str):
@@ -37,19 +38,13 @@ class ArrowSeismicDataset(torch.utils.data.Dataset):
         if not arrow_files:
             raise FileNotFoundError(f"Could not find any .arrow files in {arrow_dir_path}")
             
-        print(f"Found {len(arrow_files)} Arrow shards. Stitching them together...")
         self.hf_dataset = load_dataset("arrow", data_files=arrow_files, split="train")
         
-        print(f"Loading magnitude labels from {csv_path}...")
         df = pd.read_csv(csv_path)
-        
-        # Create a lightning-fast O(1) lookup dictionary: {event_time: magnitude}
-        # Fill missing magnitudes with 0.0 to prevent NaN poisoning
         self.mag_lookup = dict(zip(df['event_time'].astype(str), df['magnitude'].fillna(0.0).astype(float)))
         
-        # Format for PyTorch but keep event_time accessible for the lookup
         self.hf_dataset = self.hf_dataset.with_format(type='torch', columns=['data'], output_all_columns=True)
-        print(f"Successfully loaded {len(self.hf_dataset)} seismic events.")
+        print(f"Successfully loaded {len(self.hf_dataset)} events from {arrow_dir_path}")
 
     def __len__(self):
         return len(self.hf_dataset)
@@ -57,23 +52,16 @@ class ArrowSeismicDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         sample = self.hf_dataset[idx]
         
-        # 1. Extract the (3, 8192) waveform tensor
         waveform = sample['data']
-        
-        # 2. Scrub the raw data for dead sensors (NaNs or Infinities)
         waveform = torch.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0)
         
-        # 3. Lookup the magnitude using the timestamp
         event_time_str = str(sample['event_time'])
         mag_value = self.mag_lookup.get(event_time_str, 0.0)
         magnitude = torch.tensor([mag_value], dtype=torch.float32)
         
-        # 4. Robust Z-score normalization per channel
         mean = waveform.mean(dim=1, keepdim=True)
-        std = waveform.std(dim=1, keepdim=True) + 1e-5 # Higher epsilon to prevent div by zero
+        std = waveform.std(dim=1, keepdim=True) + 1e-5
         waveform = (waveform - mean) / std
-        
-        # 5. Final scrub just in case normalization created new NaNs
         waveform = torch.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0)
             
         return waveform.float(), magnitude
@@ -100,7 +88,7 @@ def configure_hf_cache():
         os.environ["HF_HOME"] = str(hf_home)
 
 # ==========================================
-# 2. EVALUATION FUNCTION (REGRESSION)
+# 2. EVALUATION FUNCTION
 # ==========================================
 def evaluate_split(model, dataloader, criterion, device, desc: str):
     model.eval()
@@ -112,14 +100,14 @@ def evaluate_split(model, dataloader, criterion, device, desc: str):
         for x, y in split_bar:
             x, y = x.to(device), y.to(device)
 
-            # FULL FP32 PRECISION (No Autocast)
-            preds = model(x)
-            loss = criterion(preds, y)
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                preds = model(x)
+                loss = criterion(preds, y)
                 
             split_loss += loss.item()
 
-            all_preds.extend(preds.cpu().numpy().flatten())
-            all_targets.extend(y.cpu().numpy().flatten())
+            all_preds.extend(preds.float().cpu().numpy().flatten())
+            all_targets.extend(y.float().cpu().numpy().flatten())
 
     avg_loss = split_loss / len(dataloader)
     
@@ -143,11 +131,17 @@ def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # --- Data Loading ---
-    arrow_path = str(resolve_path(args.arrow_path))
+    # --- Data Loading (PyTorch Concat Bypass) ---
     csv_path = str(resolve_path(args.csv_path))
     
-    full_dataset = ArrowSeismicDataset(arrow_path, csv_path)
+    individual_datasets = []
+    for path in args.arrow_paths:
+        ds = ArrowSeismicDataset(str(resolve_path(path)), csv_path)
+        individual_datasets.append(ds)
+        
+    print("Stitching datasets together via PyTorch ConcatDataset...")
+    full_dataset = ConcatDataset(individual_datasets)
+    print(f"Total Combined Dataset Size: {len(full_dataset)}")
     
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
@@ -155,7 +149,6 @@ def train(args):
         full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42)
     )
 
-    # Note: drop_last=True is critical for Mamba-2 to prevent weird batch sizes crashing causal_conv1d
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     
@@ -167,6 +160,9 @@ def train(args):
         n_layers=args.n_layers,
         headdim=args.mamba_headdim,
     ).to(device)
+
+    #print("Compiling model for Hopper Tensor Cores...")
+    #model = torch.compile(model)
 
     criterion = nn.L1Loss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -187,7 +183,6 @@ def train(args):
                 config=vars(args),
                 mode=args.wandb_mode
             )
-            wandb.watch(model)
         except ImportError:
             print("W&B not installed. Continuing without logging.")
     else:
@@ -210,9 +205,9 @@ def train(args):
                 x, y = x.to(device), y.to(device)
                 optimizer.zero_grad()
                 
-                # FULL FP32 PRECISION (No Autocast or Scaler)
-                preds = model(x)
-                loss = criterion(preds, y)
+                with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+                    preds = model(x)
+                    loss = criterion(preds, y)
                 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -267,15 +262,14 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train QuakeWaveMamba2 for Seismic Regression")
     
-    # Data arguments
-    parser.add_argument("--arrow_path", type=str, default=DEFAULT_ARROW_PATH, help="Direct path to the cached .arrow dataset directory")
-    parser.add_argument("--csv_path", type=str, default=DEFAULT_CSV_PATH, help="Direct path to the events_test.csv file")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers")
+    parser.add_argument("--arrow_paths", nargs='+', default=DEFAULT_ARROW_PATHS, help="List of paths to the cached .arrow dataset directories")
+    parser.add_argument("--csv_path", type=str, default=DEFAULT_CSV_PATH, help="Path to the merged augmented events CSV file")
     
-    # Training hyperparameters
+    parser.add_argument("--num_workers", type=int, default=16, help="Number of dataloader workers (Maximized for H100)")
+    parser.add_argument("--batch_size", type=int, default=256, help="Batch size (Maximized for 80GB VRAM in BF16)")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (Increased to compensate for large batch size)")
+    
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
-    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (Lowered for stability)")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for AdamW")
     
     # Mamba2 parameters
@@ -289,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--disable_wandb", action="store_true", help="Disable Weights & Biases logging")
     parser.add_argument("--wandb_project", type=str, default="quake-wave-mamba2", help="W&B project name")
     parser.add_argument("--wandb_entity", type=str, default="", help="W&B entity/team")
-    parser.add_argument("--wandb_run_name", type=str, default="run-1", help="W&B run name")
+    parser.add_argument("--wandb_run_name", type=str, default="run-h100-bf16", help="W&B run name")
     parser.add_argument(
         "--wandb_mode",
         type=str,

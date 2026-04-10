@@ -2,6 +2,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --nodes=1
 #SBATCH --time=2:00:00
+#SBATCH -p debug
 #SBATCH --output=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.out
 #SBATCH --error=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.err
 #SBATCH --export=NONE          
@@ -12,7 +13,7 @@ mkdir -p /scratch/brikiyou/triton_cache
 export TRITON_CACHE_DIR=/scratch/brikiyou/triton_cache
 
 PROJECT_ROOT=/scratch/brikiyou/ift3710
-VENV_PY=$PROJECT_ROOT/env/py1013/bin/python
+VENV_PY=$PROJECT_ROOT/env/py1105/bin/python
 MAIN_PY=$PROJECT_ROOT/src/data-processing/california/ceed_data_augmentation.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
 

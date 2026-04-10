@@ -26,7 +26,7 @@ def pad_with_ambient_noise(waveform, target_length=8192, noise_window=200):
 
 def run_fast_augmentation():
     # 1. Config
-    magnitudes = np.random.normal(5.0, 0.5, size=5).tolist()
+    magnitudes = np.random.normal(5.2, 0.5, size=20).tolist()
     depths_km = np.random.uniform(low=5.0, high=20.0, size=5).tolist()    
     samples_per_combo = 256  
     

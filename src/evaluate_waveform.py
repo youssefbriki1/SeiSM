@@ -87,7 +87,7 @@ def parse_args():
                         default="/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
                         help="Path to huggingface arrow file directory")
     parser.add_argument("--csv_path", type=str, 
-                        default="/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test.csv",
+                        default="/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv",
                         help="Path to CSV containing event magnitudes")
     parser.add_argument("--checkpoint", type=str,
                         default="/scratch/brikiyou/ift3710/checkpoints/best_quake_mamba2_waveform.pth",

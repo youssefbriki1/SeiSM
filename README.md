@@ -1,4 +1,4 @@
-# ift3710: Earthquake Prediction with State Space Models
+# ift3710 - SeiSM: Earthquake Prediction with State Space Models
 
 This project implements state space models (SSMs) for earthquake forecasting, focusing on the California Earthquake Catalog (CEED) dataset. It combines spatial feature engineering with SSM architectures like Mamba for predictive modeling.
 

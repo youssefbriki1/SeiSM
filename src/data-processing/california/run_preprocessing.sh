@@ -22,7 +22,7 @@ if command -v module &> /dev/null; then
     module load gcc arrow/22.0.0
 fi
 # Step 1: Download CEED dataset if missing
-if [ ! -f "data/CEED/events.csv" ]; then
+if [ ! -f "../../../data/california/events.csv" ]; then
     echo "[Step 1] events.csv not found. Downloading CEED dataset..."
     python3 ceed_loader.py
     echo "[Step 1] Download complete."

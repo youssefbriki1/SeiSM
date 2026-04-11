@@ -14,14 +14,14 @@ from ceed_maps_builder import CEEDmaps
 
 def run_map_pipeline(start_year, end_year):
 
-    OUTPUT = Path("data/processed/cal_maps")
+    OUTPUT = Path(__file__).parent.parent.parent.parent / 'data' / 'california' / 'cal_maps'
     OUTPUT.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------
     # Ensure shapefiles exist
     # ------------------------------
-    FAULTS_FILE = Path("data/faults/SHP/Qfaults_US_Database.shp")
-    GEOLOGY_FILE = Path("data/geology/CA_geol_poly.shp")
+    FAULTS_FILE = Path(__file__).parent.parent.parent.parent / 'data' / 'california' / 'faults' / 'SHP' / 'Qfaults_US_Database.shp'
+    GEOLOGY_FILE = Path(__file__).parent.parent.parent.parent / 'data' / 'california' / 'geology' / 'CA_geol_poly.shp'
 
     if not FAULTS_FILE.exists() or not GEOLOGY_FILE.exists():
         print("Shapefiles not found. Running download_shapefiles.py ...")

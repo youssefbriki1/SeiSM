@@ -170,7 +170,12 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
     accuracy = sum(int(p == t) for p, t in zip(all_preds, all_targets)) / len(all_targets)
     error = 1.0 - accuracy
 
-    return {
+    labels_list = list(range(num_classes))
+    f1_per_class = f1_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+    precision_per_class = precision_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+    recall_per_class = recall_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+
+    metrics = {
         "loss": avg_loss,
         "accuracy": accuracy,
         "error": error,
@@ -178,6 +183,13 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
         "precision": precision_score(all_targets, all_preds, average='macro', zero_division=0),
         "recall": recall_score(all_targets, all_preds, average='macro', zero_division=0),
     }
+
+    for i in range(num_classes):
+        metrics[f"class_{i}_f1"] = float(f1_per_class[i])
+        metrics[f"class_{i}_precision"] = float(precision_per_class[i])
+        metrics[f"class_{i}_accuracy"] = float(recall_per_class[i])
+
+    return metrics
 
 
 def train(args):
@@ -486,15 +498,27 @@ def train(args):
                 f"Train Loss: {avg_train_loss:.4f} | Train Error: {train_error:.4f} | "
                 f"Val Loss: {val_metrics['loss']:.4f} | Val Error: {val_metrics['error']:.4f}"
             )
+            val_class_accs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
+            val_class_precs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
+            val_class_f1s = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
             print(
                 f"Val Macro-F1: {val_f1:.4f} | Precision: {val_precision:.4f} | "
                 f"Recall: {val_recall:.4f}"
             )
+            print(f"Val Class Accuracies: {val_class_accs}")
+            print(f"Val Class Precisions: {val_class_precs}")
+            print(f"Val Class F1:         {val_class_f1s}")
             if test_metrics is not None:
+                test_class_accs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
+                test_class_precs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
+                test_class_f1s = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
                 print(
                     f"Test Loss: {test_metrics['loss']:.4f} | Test Error: {test_metrics['error']:.4f} | "
                     f"Test Macro-F1: {test_metrics['f1']:.4f}"
                 )
+                print(f"Test Class Accuracies: {test_class_accs}")
+                print(f"Test Class Precisions: {test_class_precs}")
+                print(f"Test Class F1:         {test_class_f1s}")
 
             if wandb is not None:
                 log_payload = {
@@ -510,6 +534,9 @@ def train(args):
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
+                for k, v in val_metrics.items():
+                    if k.startswith("class_"):
+                        log_payload[f"val/{k}"] = v
                 if test_metrics is not None:
                     log_payload.update(
                         {

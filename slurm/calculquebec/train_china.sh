@@ -62,6 +62,7 @@ cd "$PROJECT_ROOT"
 echo "[Command] : srun $VENV_PY $MAIN_PY --use_focal_loss  --data_dir $DATA_DIR --wandb_mode offline $*"
 srun --export=ALL "$VENV_PY" "$MAIN_PY" \
   --data_dir "$DATA_DIR" \
+  --save_path "$SAVE_PATH" \
   --use_focal_loss \
   --wandb_mode offline \
   --train_target_year_start 1979 \

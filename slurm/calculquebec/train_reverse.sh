@@ -63,12 +63,20 @@ srun --export=ALL "$VENV_PY" "$MAIN_PY" \
   --data_dir "$DATA_DIR" \
   --use_focal_loss \
   --wandb_mode offline \
-  --train_target_year_start 1987 \
-  --epochs 500 \
-  --lr 1e-5 \
+  --epochs 200 \
+  --lr 1e-4 \
   --weight_decay 1e-3 \
   --batch_size 4 \
-  --grad_accum_steps 8 \
+  --grad_accum_steps 4 \
   --focal_gamma 3.0 \
   --focal_alpha 1.0 4.0 15.0 78.0 \
+  --train_features_file "ceed_testing_output.pickle" \
+  --train_labels_file "ceed_testing_labels.pickle" \
+  --train_target_year_start 2011 \
+  --val_features_file "ceed_training_output.pickle" \
+  --val_labels_file "ceed_training_labels.pickle" \
+  --val_target_year_start 1987 \
+  --test_features_file "ceed_training_output.pickle" \
+  --test_labels_file "ceed_training_labels.pickle" \
+  --test_target_year_start 1987 \
   "$@"

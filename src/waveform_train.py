@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from datasets import load_dataset
 
-from models import QuakeWaveMamba2
+from models import QuakeWaveMamba2, WaveformLSTM, WaveformTransformer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -153,13 +153,35 @@ def train(args):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     
     # --- Model, Loss, Optimizer ---
-    model = QuakeWaveMamba2(
-        in_channels=3,
-        d_model=args.d_model,
-        d_state=args.d_state,
-        n_layers=args.n_layers,
-        headdim=args.mamba_headdim,
-    ).to(device)
+    if args.model_type == "mamba2":
+        model = QuakeWaveMamba2(
+            in_channels=3,
+            d_model=args.d_model,
+            d_state=args.d_state,
+            n_layers=args.n_layers,
+            headdim=args.mamba_headdim,
+        ).to(device)
+    elif args.model_type == "lstm":
+        model = WaveformLSTM(
+            in_channels=3,
+            d_model=args.d_model,
+            hidden_size=args.lstm_hidden_size,
+            num_layers=args.lstm_layers,
+            dropout=args.lstm_dropout,
+            output_size=1
+        ).to(device)
+    elif args.model_type == "transformer":
+        model = WaveformTransformer(
+            in_channels=3,
+            d_model=args.d_model,
+            nhead=args.tf_nhead,
+            num_layers=args.tf_layers,
+            dim_feedforward=args.tf_dim_feedforward,
+            dropout=args.tf_dropout,
+            output_size=1
+        ).to(device)
+    else:
+        raise ValueError(f"Unknown model_type: {args.model_type}")
 
     #print("Compiling model for Hopper Tensor Cores...")
     #model = torch.compile(model)
@@ -191,10 +213,12 @@ def train(args):
 
     best_val_mae = float('inf') 
     global_step = 0
+    global_start_time = time.time()
 
     # --- Training Epochs ---
     try:
         for epoch in range(args.epochs):
+            epoch_start_time = time.time()
             print(f"\nEpoch {epoch+1}/{args.epochs}")
             
             model.train()
@@ -239,12 +263,15 @@ def train(args):
                 f"Val MAE Loss: {val_metrics['mae']:.4f} | Val R2: {val_metrics['r2']:.4f}"
             )
 
+            epoch_time = time.time() - epoch_start_time
+
             if wandb is not None:
                 wandb.log({
                     "train/epoch_loss": avg_train_loss,
                     "val/mae_loss": val_metrics["mae"],
                     "val/mse_loss": val_metrics["mse"],
                     "val/r2_score": val_metrics["r2"],
+                    "time/epoch_time_seconds": epoch_time,
                     "best/val_mae": best_val_mae,
                     "epoch": epoch + 1,
                 }, step=global_step)
@@ -254,7 +281,10 @@ def train(args):
                 torch.save(model.state_dict(), save_path)
                 print(f"*** New best model saved to {save_path} with MAE: {best_val_mae:.4f} ***")
 
-        print("Training Complete!")
+            print(f"Epoch {epoch+1} completed in {epoch_time:.2f} seconds ({epoch_time/60:.2f} minutes).")
+
+        global_time = time.time() - global_start_time
+        print(f"Training Complete! Total time: {global_time:.2f} seconds ({global_time/60:.2f} minutes / {global_time/3600:.2f} hours).")
     finally:
         if wandb is not None:
             wandb.finish()
@@ -272,12 +302,26 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for AdamW")
     
+    # Model type
+    parser.add_argument("--model_type", type=str, choices=["mamba2", "lstm", "transformer"], default="mamba2", help="Model architecture to use")
+
     # Mamba2 parameters
     parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")
     parser.add_argument("--d_state", type=int, default=64, help="Mamba2 state dimension")
     parser.add_argument("--mamba_headdim", type=int, default=32, help="Mamba2 headdim. Set to 32 to ensure multiple-of-8 for causal_conv1d.")
     parser.add_argument("--n_layers", type=int, default=4, help="Number of Mamba2 blocks")
     
+    # LSTM parameters
+    parser.add_argument("--lstm_hidden_size", type=int, default=128, help="Hidden size for LSTM model")
+    parser.add_argument("--lstm_layers", type=int, default=2, help="Number of layers for LSTM model")
+    parser.add_argument("--lstm_dropout", type=float, default=0.2, help="Dropout for LSTM model")
+    
+    # Transformer parameters
+    parser.add_argument("--tf_nhead", type=int, default=8, help="Number of attention heads for Transformer model")
+    parser.add_argument("--tf_layers", type=int, default=4, help="Number of encoder layers for Transformer model")
+    parser.add_argument("--tf_dim_feedforward", type=int, default=512, help="Dimension of the feedforward network in Transformer model")
+    parser.add_argument("--tf_dropout", type=float, default=0.2, help="Dropout for Transformer model")
+
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")
     parser.add_argument("--disable_wandb", action="store_true", help="Disable Weights & Biases logging")

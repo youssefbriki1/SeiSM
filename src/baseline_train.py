@@ -38,7 +38,7 @@ from utils import SafeNetDataset, MultimodalSafeNetDataset, FocalLoss
 # Model registry
 # ---------------------------------------------------------------------------
 def _build_lstm(args, num_patches: int, num_features: int) -> nn.Module:
-    from models.lstm.lstm import LSTMModel
+    from src.models.baselines.maps.lstm.lstm import LSTMModel
     return LSTMModel(
         input_size=num_features,
         hidden_size=args.hidden_size,

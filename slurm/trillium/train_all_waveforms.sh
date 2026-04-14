@@ -23,7 +23,7 @@ mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 echo "======================================"
 echo "Starting Training: Mamba2"
 echo "======================================"
-srun "$VENV_PY" "$MAIN_PY" \
+"$VENV_PY" "$MAIN_PY" \
   --model_type mamba2 \
   --wandb_entity ift3710-ai-slop \
   --wandb_project quake-wave-mamba2 \
@@ -35,7 +35,7 @@ srun "$VENV_PY" "$MAIN_PY" \
 echo "======================================"
 echo "Starting Training: LSTM"
 echo "======================================"
-srun "$VENV_PY" "$MAIN_PY" \
+"$VENV_PY" "$MAIN_PY" \
   --model_type lstm \
   --lstm_hidden_size 128 \
   --lstm_layers 2 \
@@ -50,7 +50,7 @@ srun "$VENV_PY" "$MAIN_PY" \
 echo "======================================"
 echo "Starting Training: Transformer"
 echo "======================================"
-srun "$VENV_PY" "$MAIN_PY" \
+"$VENV_PY" "$MAIN_PY" \
   --model_type transformer \
   --d_model 128 \
   --tf_layers 4 \

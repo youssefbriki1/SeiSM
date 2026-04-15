@@ -1,29 +1,62 @@
-import torch 
+import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from quakewave_mamba import QuakeWaveMamba2
 
-class Seism(nn.Module):
-    def __init__(self, in_channels=3, out_channels=3, num_layers=4, hidden_dim=64, freeze_mamba=True):
-        super(Seism, self).__init__()
-        self.mamba = QuakeWaveMamba2(in_channels, out_channels, num_layers, hidden_dim)
-        if freeze_mamba:
-            for param in self.mamba.parameters():
-                param.requires_grad = False
-                
-        self.lin1 = nn.Linear(2, hidden_dim)
-        self.lin2 = nn.Linear(hidden_dim, hidden_dim)
-        self.lin3 = nn.Linear(hidden_dim, out_channels)
+class SeiSM(nn.Module):
+    def __init__(
+        self, 
+        mamba_model: nn.Module, 
+        safenet_model: nn.Module, 
+        mlp_hidden_dim: int = 32, 
+        final_classes: int = 4
+    ):
+        """
+        Merges Mamba and SafeNet using an MLP. Base models are frozen.
+        """
+        super().__init__()
         
-    def forward(self, x):
-        mamba_out = self.mamba(x) 
+        self.mamba = mamba_model
+        self.safenet = safenet_model
         
-        # Take the last time step from mamba output
-        last_time_step = mamba_out[:, :, -1]  # shape: (batch_size, out_channels)
+        for param in self.mamba.parameters():
+            param.requires_grad = False
+            
+        for param in self.safenet.parameters():
+            param.requires_grad = False
+            
+        self.mamba.eval()
+        self.safenet.eval()
+
+        fusion_in_features = 4 + 1 
         
-        # Pass through linear layers
-        out = F.relu(self.lin1(last_time_step))  # shape: (batch_size, hidden_dim)
-        out = F.relu(self.lin2(out))  # shape: (batch_size, hidden_dim)
-        out = self.lin3(out)  # shape: (batch_size, out_channels)
+        self.mlp = nn.Sequential(
+            nn.Linear(fusion_in_features, mlp_hidden_dim),
+            nn.GELU(),
+            nn.Dropout(0.2),
+            nn.Linear(mlp_hidden_dim, final_classes)
+        )
+
+    def forward(self, waveforms: torch.Tensor, safenet_inputs) -> torch.Tensor:
+        with torch.no_grad():
+            mamba_out = self.mamba(waveforms)
+            
+            safenet_out = self.safenet(safenet_inputs)
         
-        return out
+        Batch, Patches, _ = safenet_out.shape
+        
+        mamba_expanded = mamba_out.unsqueeze(1).expand(Batch, Patches, 1)
+        
+        fused_features = torch.cat([safenet_out, mamba_expanded], dim=-1)
+        
+        final_output = self.mlp(fused_features)
+        
+        return final_output
+    
+    def train(self, mode=True):
+        """
+        Override the train method to ensure base models stay in eval mode
+        even when fused_model.train() is called.
+        """
+        super().train(mode)
+        if mode:
+            self.mamba.eval()
+            self.safenet.eval()

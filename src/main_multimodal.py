@@ -9,8 +9,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.spatial_models import SafeNetFull, SeiSM
-
+from models.safenet_embeddings import SafeNetFull
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -171,12 +170,7 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
     accuracy = sum(int(p == t) for p, t in zip(all_preds, all_targets)) / len(all_targets)
     error = 1.0 - accuracy
 
-    labels_list = list(range(num_classes))
-    f1_per_class = f1_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
-    precision_per_class = precision_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
-    recall_per_class = recall_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
-
-    metrics = {
+    return {
         "loss": avg_loss,
         "accuracy": accuracy,
         "error": error,
@@ -184,13 +178,6 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
         "precision": precision_score(all_targets, all_preds, average='macro', zero_division=0),
         "recall": recall_score(all_targets, all_preds, average='macro', zero_division=0),
     }
-
-    for i in range(num_classes):
-        metrics[f"class_{i}_f1"] = float(f1_per_class[i])
-        metrics[f"class_{i}_precision"] = float(precision_per_class[i])
-        metrics[f"class_{i}_accuracy"] = float(recall_per_class[i])
-
-    return metrics
 
 
 def train(args):
@@ -317,45 +304,27 @@ def train(args):
     print(f"[Data] catalog shape: {catalog_shape}, maps shape: {maps_shape}")
     print(f"[Data] num_patches={num_patches}, catalog_features={catalog_features}, map_channels={map_channels}")
 
-    # --- Model selection ---
+    # --- Model: SafeNetFull (multimodal: catalog + maps → LSTM → ViT → classification) ---
     num_classes = args.num_classes
-    if args.model == "SeiSM":
-        model = SeiSM(
-            num_classes=num_classes,
-            map_channels=map_channels,
-            catalog_features=catalog_features,
-            embed_dim=args.embed_dim,
-            num_patches=num_patches,
-            d_model=args.d_model,
-            d_state=args.d_state,
-            n_ssm_layers=args.n_ssm_layers,
-        ).to(device)
-        print(f"[Model] SeiSM — embed_dim={args.embed_dim}, d_model={args.d_model}, "
-              f"d_state={args.d_state}, n_ssm_layers={args.n_ssm_layers}")
-    else:
-        model = SafeNetFull(
-            num_classes=num_classes,
-            map_channels=map_channels,
-            catalog_features=catalog_features,
-            embed_dim=args.embed_dim,
-            num_patches=num_patches,
-            num_heads=args.num_heads,
-            transformer_layers=args.transformer_layers,
-            dropout=args.dropout,
-        ).to(device)
-        print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
-              f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
+    model = SafeNetFull(
+        num_classes=num_classes,
+        map_channels=map_channels,
+        catalog_features=catalog_features,
+        embed_dim=args.embed_dim,
+        num_patches=num_patches,
+        num_heads=args.num_heads,
+        transformer_layers=args.transformer_layers,
+        dropout=args.dropout,
+    ).to(device)
+    print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
+          f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
 
     if args.use_focal_loss:
-        if args.focal_alpha is not None:
-            if len(args.focal_alpha) != num_classes:
-                raise ValueError(f"--focal_alpha must have {num_classes} elements, got {len(args.focal_alpha)}")
-            class_weights = torch.tensor(args.focal_alpha, device=device)
-        elif num_classes != 4:
+        if num_classes != 4:
             class_weights = torch.ones(num_classes, device=device)
         else:
-            class_weights = torch.tensor([1.0, 4.0, 15.0, 78.0], device=device)
-        criterion = FocalLoss(alpha=class_weights, gamma=args.focal_gamma)
+            class_weights = torch.tensor([0.1, 1.0, 5.0, 20.0], device=device)
+        criterion = FocalLoss(alpha=class_weights, gamma=2.0)
         print("Using Focal Loss to handle class imbalance.")
     else:
         criterion = nn.CrossEntropyLoss()
@@ -383,22 +352,16 @@ def train(args):
             name=args.wandb_run_name if args.wandb_run_name else None,
             mode=args.wandb_mode,
             config={
-                "model": args.model,
+                "model": "SafeNetFull",
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
-                "grad_accum_steps": args.grad_accum_steps,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "embed_dim": args.embed_dim,
                 "num_heads": args.num_heads,
                 "transformer_layers": args.transformer_layers,
                 "dropout": args.dropout,
-                "d_model": args.d_model,
-                "d_state": args.d_state,
-                "n_ssm_layers": args.n_ssm_layers,
                 "use_focal_loss": args.use_focal_loss,
-                "focal_gamma": args.focal_gamma,
-                "focal_alpha": args.focal_alpha,
                 "data_dir": str(data_dir),
                 "train_features_path": str(train_features_path),
                 "train_labels_path": str(train_labels_path) if has_train_labels_file else None,
@@ -438,12 +401,12 @@ def train(args):
             train_correct = 0
             train_total = 0
             train_bar = tqdm(train_loader, desc="Training")
-            optimizer.zero_grad()
             
-            for i, (inputs, y) in enumerate(train_bar):
+            for inputs, y in train_bar:
                 # Move dict inputs to device
                 inputs = {k: v.to(device) for k, v in inputs.items()}
                 y = y.to(device)
+                optimizer.zero_grad()
                 
                 logits = model(inputs)  # (B, num_patches, num_classes)
 
@@ -454,26 +417,22 @@ def train(args):
                 y_flat = y.reshape(-1)
                 
                 loss = criterion(logits_flat, y_flat)
-                loss_item = loss.item()
-                loss = loss / args.grad_accum_steps
                 loss.backward()
                 
-                if (i + 1) % args.grad_accum_steps == 0 or (i + 1) == len(train_loader):
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                    optimizer.step()
-                    optimizer.zero_grad()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
                 
-                train_loss += loss_item
+                train_loss += loss.item()
                 preds = torch.argmax(logits_flat, dim=1)
                 train_correct += (preds == y_flat).sum().item()
                 train_total += y_flat.numel()
                 global_step += 1
-                train_bar.set_postfix({'loss': f"{loss_item:.4f}"})
+                train_bar.set_postfix({'loss': f"{loss.item():.4f}"})
 
                 if wandb is not None:
                     wandb.log(
                         {
-                            "train/batch_loss": loss_item,
+                            "train/batch_loss": loss.item(),
                             "train/batch_error": 1.0 - ((preds == y_flat).float().mean().item()),
                             "train/lr": optimizer.param_groups[0]["lr"],
                             "train/epoch": epoch + 1,
@@ -516,27 +475,15 @@ def train(args):
                 f"Train Loss: {avg_train_loss:.4f} | Train Error: {train_error:.4f} | "
                 f"Val Loss: {val_metrics['loss']:.4f} | Val Error: {val_metrics['error']:.4f}"
             )
-            val_class_accs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
-            val_class_precs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
-            val_class_f1s = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
             print(
                 f"Val Macro-F1: {val_f1:.4f} | Precision: {val_precision:.4f} | "
                 f"Recall: {val_recall:.4f}"
             )
-            print(f"Val Class Accuracies: {val_class_accs}")
-            print(f"Val Class Precisions: {val_class_precs}")
-            print(f"Val Class F1:         {val_class_f1s}")
             if test_metrics is not None:
-                test_class_accs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
-                test_class_precs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
-                test_class_f1s = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
                 print(
                     f"Test Loss: {test_metrics['loss']:.4f} | Test Error: {test_metrics['error']:.4f} | "
                     f"Test Macro-F1: {test_metrics['f1']:.4f}"
                 )
-                print(f"Test Class Accuracies: {test_class_accs}")
-                print(f"Test Class Precisions: {test_class_precs}")
-                print(f"Test Class F1:         {test_class_f1s}")
 
             if wandb is not None:
                 log_payload = {
@@ -552,9 +499,6 @@ def train(args):
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
-                for k, v in val_metrics.items():
-                    if k.startswith("class_"):
-                        log_payload[f"val/{k}"] = v
                 if test_metrics is not None:
                     log_payload.update(
                         {
@@ -583,11 +527,8 @@ def train(args):
             wandb.finish()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train SafeNet multimodal models for Earthquake Forecasting")
-
-    # Model selection
-    parser.add_argument("--model", type=str, default="SeiSM", choices=["safenet_full", "SeiSM"], help="Model architecture to train")
-
+    parser = argparse.ArgumentParser(description="Train SafeNetFull (Multimodal) for Earthquake Forecasting")
+    
     # Data arguments
     parser.add_argument(
         "--data_dir",
@@ -615,7 +556,6 @@ if __name__ == "__main__":
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size (smaller default due to map memory usage)")
-    parser.add_argument("--grad_accum_steps", type=int, default=1, help="Number of steps to accumulate gradients before updating weights")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
     parser.add_argument("--num_classes", type=int, default=4, help="Number of classification classes")
@@ -625,16 +565,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_heads", type=int, default=2, help="Number of attention heads in the Vision Transformer")
     parser.add_argument("--transformer_layers", type=int, default=1, help="Number of Transformer encoder layers")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate in the Transformer encoder")
-
-    # SeiSM architecture hyperparameters
-    parser.add_argument("--d_model", type=int, default=128, help="Mamba SSM hidden dimension")
-    parser.add_argument("--d_state", type=int, default=16, help="Mamba SSM state expansion factor")
-    parser.add_argument("--n_ssm_layers", type=int, default=2, help="Number of stacked Mamba layers")
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")
-    parser.add_argument("--focal_gamma", type=float, default=2.0, help="Gamma parameter for Focal Loss")
-    parser.add_argument("--focal_alpha", type=float, nargs="+", default=None, help="Alpha class weights for Focal Loss, space separated (e.g., 1.0 4.0 15.0 78.0)")
     
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")

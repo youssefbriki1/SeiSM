@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -217,10 +218,12 @@ class ImageProcessing:
 # # main()
 
 def main():
+    CEED_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'california'
+    
     CEED_map = ImageProcessing(
         map_path="map_outline.jpg",
-        event_csv_path="data/CEED/events_preprocessed_1987_2010.csv",
-        patch_csv_path="data/CEED/png_list_to_patchxy_california.csv",
+        event_csv_path=str(CEED_DIR / 'events_preprocessed_1987_2010.csv'),
+        patch_csv_path=str(CEED_DIR / 'png_list_to_patchxy.csv'),
         cols= 8,
         rows = 8,
         width= 512,

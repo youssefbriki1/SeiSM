@@ -15,7 +15,7 @@ import requests
 import zipfile
 from pathlib import Path
 
-DATA_DIR = Path("data")
+DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'california' 
 FAULTS_DIR = DATA_DIR / "faults"
 GEOLOGY_DIR = DATA_DIR / "geology"
 

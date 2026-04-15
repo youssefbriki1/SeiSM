@@ -32,13 +32,11 @@ from pathlib import Path
 from ceed_maps_pipeline import run_map_pipeline
 
 # ── Paths ────────────────────────────────────────────────────────────────
-CEED_DIR   = Path("data/CEED")
-OUTPUT_DIR = Path("data/CEED/processed")
+CEED_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'california'
 EVENTS_CSV = CEED_DIR / "events.csv"
-PATCH_CSV  = CEED_DIR / "png_list_to_patchxy_california.csv"
+PATCH_CSV  = CEED_DIR / "png_list_to_patchxy.csv"
 
 CEED_DIR.mkdir(parents=True, exist_ok=True)
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── California grid config ───────────────────────────────────────────────
 BBOX      = (-125, 32, -113, 42)   # xmin, ymin, xmax, ymax
@@ -453,8 +451,7 @@ def build_pickle(df, output_pickle, norm_start, target_years):
 
     # Load png data for the full history range (10 years before first target year)
     # This gives len(eq_data) + 9 png entries for sliding-window alignment
-    script_dir = Path(__file__).resolve().parent
-    patches_dir = script_dir / "data" / "processed" / "cal_maps"
+    patches_dir = Path(__file__).parent.parent.parent.parent / 'data' / 'california' / 'cal_maps'
     png_start = min(target_years) - 9
     png_end = max(target_years)
 
@@ -549,9 +546,9 @@ if __name__ == '__main__':
     print("="*60)
     df_train = prepare_dataframe(load_and_adapt(TRAIN_START, TRAIN_END))
     run_map_pipeline(TRAIN_START, TRAIN_END)
-    build_pickle(df_train, str(OUTPUT_DIR / 'ceed_training_output.pickle'),
+    build_pickle(df_train, str(CEED_DIR / 'training_output.pickle'),
                  norm_start=1988, target_years=list(range(1996, 2011)))
-    build_labels(df_train, str(OUTPUT_DIR / 'ceed_training_labels.pickle'),
+    build_labels(df_train, str(CEED_DIR / 'training_labels.pickle'),
                  target_years=list(range(1996, 2011)))
 
     # ── Testing (target years 2011-2020) ──────────────────────────────
@@ -561,7 +558,7 @@ if __name__ == '__main__':
     print("="*60)
     df_test = prepare_dataframe(load_and_adapt(TEST_START, TEST_END))
     run_map_pipeline(TEST_START, TEST_END)
-    build_pickle(df_test, str(OUTPUT_DIR / 'ceed_testing_output.pickle'),
+    build_pickle(df_test, str(CEED_DIR / 'testing_output.pickle'),
                  norm_start=2002, target_years=list(range(2011, 2021)))
-    build_labels(df_test, str(OUTPUT_DIR / 'ceed_testing_labels.pickle'),
+    build_labels(df_test, str(CEED_DIR / 'testing_labels.pickle'),
                  target_years=list(range(2011, 2021)))

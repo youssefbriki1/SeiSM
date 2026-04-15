@@ -602,7 +602,7 @@ def build_labels(raw_csv, patch_csv, output_pickle, target_years):
 
 if __name__ == '__main__':
                                       
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'china'
 
     raw_csv = os.path.join(DATA_DIR, 'training_data.csv')
     patch_csv = os.path.join(DATA_DIR, 'png_list_to_patchxy.csv')
@@ -622,7 +622,7 @@ if __name__ == '__main__':
 
     raw_csv = os.path.join(DATA_DIR, 'testing_data.csv')
     patch_csv = os.path.join(DATA_DIR, 'png_list_to_patchxy.csv')
-    output_pickle = os.path.join(DATA_DIR, 'testing_output.pickle') #this is what needs to match eqs_and_png.pickle
+    output_pickle = os.path.join(DATA_DIR, 'testing_output.pickle')
     norm_start = 2002 # earliest year with a full window in the data
     target_years = list(range(2011, 2021)) #2011 - 2020
 

@@ -102,7 +102,7 @@ def render_eq_distribution(year):
     print("Calculating eq distribution map ... ")
     global cols, rows, img
     
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'china'
     raw_csv = os.path.join(DATA_DIR, "1970-2021_11_EARTH_final_with_patchnum.csv")
     df = pd.read_csv(raw_csv, usecols=['magnitude', 'x', 'y', 'onlydate', 'region'])
     df['_onlydate_dt'] = pd.to_datetime(df['onlydate'])
@@ -162,7 +162,7 @@ def reset():
 
 def combine_channels():
     global png_data
-    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data'
+    DATA_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'china'
     patch_csv = os.path.join(DATA_DIR, "png_list_to_patchxy.csv")
     df = pd.read_csv(patch_csv, usecols=['x', 'y'])
     ch4 = []

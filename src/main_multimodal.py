@@ -8,14 +8,13 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
-from utils import FocalLoss, SafeNetDataset, Muon
-from models import QuakeMamba2
-
+from utils import FocalLoss, MultimodalSafeNetDataset
+from models.safenet_embeddings import SafeNetFull
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "california" / "data" / "CEED" / "processed"
-DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_quake_mamba2.pth"
+DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_safenet_full.pth"
 
 
 def resolve_path(path_str: str, base_dir: Path | None = None) -> Path:
@@ -139,19 +138,22 @@ def build_labels_from_csv(
     return labels
 
 
-def evaluate_split(model, dataloader, criterion, device, num_classes: int, desc: str):
+def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_patches: int, desc: str):
+    """Evaluate model on a split. Handles multimodal dict inputs."""
     model.eval()
     split_loss = 0.0
     all_preds, all_targets = [], []
     split_bar = tqdm(dataloader, desc=desc)
 
     with torch.no_grad():
-        for x, y in split_bar:
-            x, y = x.to(device), y.to(device)
+        for inputs, y in split_bar:
+            # Move dict inputs to device
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            y = y.to(device)
 
-            logits = model(x)
+            logits = model(inputs)  # (B, num_patches, num_classes)
 
-            #trim the first element (the general patch)
+            # Trim to match label patches (labels are for regional patches only)
             num_label_patches = y.shape[-1]
             logits = logits[:, -num_label_patches:, :]
             logits_flat = logits.reshape(-1, num_classes)
@@ -269,14 +271,15 @@ def train(args):
         )
         print(f"[Data] Generated {len(generated_test_labels)} test labels from {test_csv_path}.")
 
-    train_dataset = SafeNetDataset(
+    # --- Multimodal datasets (catalog + maps) ---
+    train_dataset = MultimodalSafeNetDataset(
         train_features_path,
         train_labels_path if has_train_labels_file else None,
         labels_data=generated_train_labels,
     )
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
-    val_dataset = SafeNetDataset(
+    val_dataset = MultimodalSafeNetDataset(
         val_features_path,
         val_labels_path if has_val_labels_file else None,
         labels_data=generated_val_labels,
@@ -284,26 +287,37 @@ def train(args):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = None
     if not args.skip_test_eval:
-        test_dataset = SafeNetDataset(
+        test_dataset = MultimodalSafeNetDataset(
             test_features_path,
             test_labels_path if has_test_labels_file else None,
             labels_data=generated_test_labels,
         )
         test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
-    # --- Model, Loss, Optimizer ---
-    sample_x, sample_y = train_dataset[0]
-    _, num_patches, num_features = sample_x.shape
-    model = QuakeMamba2(
-        d_model=args.d_model,
-        d_state=args.d_state,
-        headdim=args.mamba_headdim,
-        input_dim=num_patches * num_features,
-        num_classes=args.num_classes,
-        num_patches=num_patches,
-        use_mem_eff_path=args.mamba_use_mem_eff_path,
-    ).to(device)
+    # --- Inspect sample to determine dimensions ---
+    sample_inputs, sample_y = train_dataset[0]
+    catalog_shape = sample_inputs["catalog"].shape   # (T=10, P+1, 282)
+    maps_shape = sample_inputs["maps"].shape         # (T=10, P, H, W, C)
+    num_patches = maps_shape[1]                      # P = regional patches (e.g. 64)
+    catalog_features = catalog_shape[-1]             # 282
+    map_channels = maps_shape[-1]                    # 5
+    print(f"[Data] catalog shape: {catalog_shape}, maps shape: {maps_shape}")
+    print(f"[Data] num_patches={num_patches}, catalog_features={catalog_features}, map_channels={map_channels}")
+
+    # --- Model: SafeNetFull (multimodal: catalog + maps → LSTM → ViT → classification) ---
     num_classes = args.num_classes
+    model = SafeNetFull(
+        num_classes=num_classes,
+        map_channels=map_channels,
+        catalog_features=catalog_features,
+        embed_dim=args.embed_dim,
+        num_patches=num_patches,
+        num_heads=args.num_heads,
+        transformer_layers=args.transformer_layers,
+        dropout=args.dropout,
+    ).to(device)
+    print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
+          f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
 
     if args.use_focal_loss:
         if num_classes != 4:
@@ -338,10 +352,15 @@ def train(args):
             name=args.wandb_run_name if args.wandb_run_name else None,
             mode=args.wandb_mode,
             config={
+                "model": "SafeNetFull",
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
+                "embed_dim": args.embed_dim,
+                "num_heads": args.num_heads,
+                "transformer_layers": args.transformer_layers,
+                "dropout": args.dropout,
                 "use_focal_loss": args.use_focal_loss,
                 "data_dir": str(data_dir),
                 "train_features_path": str(train_features_path),
@@ -350,10 +369,6 @@ def train(args):
                 "val_labels_path": str(val_labels_path) if has_val_labels_file else None,
                 "test_features_path": str(test_features_path) if not args.skip_test_eval else None,
                 "test_labels_path": str(test_labels_path) if has_test_labels_file else None,
-                "train_csv_path": str(train_csv_path),
-                "val_csv_path": str(val_csv_path),
-                "test_csv_path": str(test_csv_path) if not args.skip_test_eval else None,
-                "patch_csv_path": str(patch_csv_path),
                 "label_mag_bins": mag_bins,
                 "save_path": str(save_path),
                 "device": str(device),
@@ -363,7 +378,8 @@ def train(args):
                 "skip_test_eval": args.skip_test_eval,
                 "num_classes": num_classes,
                 "num_patches": num_patches,
-                "num_features": num_features,
+                "catalog_features": catalog_features,
+                "map_channels": map_channels,
             },
         )
         wandb.watch(model, log="all", log_freq=args.wandb_log_freq)
@@ -386,13 +402,15 @@ def train(args):
             train_total = 0
             train_bar = tqdm(train_loader, desc="Training")
             
-            for x, y in train_bar:
-                x, y = x.to(device), y.to(device)
+            for inputs, y in train_bar:
+                # Move dict inputs to device
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                y = y.to(device)
                 optimizer.zero_grad()
                 
-                logits = model(x)
+                logits = model(inputs)  # (B, num_patches, num_classes)
 
-                # trim first patch (general map)
+                # Trim to match label patches (labels are for regional patches only)
                 num_label_patches = y.shape[-1]
                 logits = logits[:, -num_label_patches:, :]
                 logits_flat = logits.reshape(-1, num_classes)
@@ -433,6 +451,7 @@ def train(args):
                 criterion=criterion,
                 device=device,
                 num_classes=num_classes,
+                num_patches=num_patches,
                 desc="Validation",
             )
             test_metrics = None
@@ -443,6 +462,7 @@ def train(args):
                     criterion=criterion,
                     device=device,
                     num_classes=num_classes,
+                    num_patches=num_patches,
                     desc="Test",
                 )
             
@@ -479,7 +499,6 @@ def train(args):
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
-                """
                 if test_metrics is not None:
                     log_payload.update(
                         {
@@ -491,7 +510,6 @@ def train(args):
                             "test/recall": test_metrics["recall"],
                         }
                     )
-                """
                 wandb.log(log_payload, step=global_step)
             
             if val_f1 > best_val_f1:
@@ -509,7 +527,7 @@ def train(args):
             wandb.finish()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train QuakeMamba2 for Earthquake Forecasting")
+    parser = argparse.ArgumentParser(description="Train SafeNetFull (Multimodal) for Earthquake Forecasting")
     
     # Data arguments
     parser.add_argument(
@@ -518,11 +536,11 @@ if __name__ == "__main__":
         default=str(DEFAULT_DATA_DIR),
         help="Directory containing training/validation pickle files",
     )
-    parser.add_argument("--train_features_file", type=str, default="ceed_training_output.pickle", help="Training features pickle file")
+    parser.add_argument("--train_features_file", type=str, default="ceed_training_output.pickle", help="Training features pickle file (must contain eq_data + png)")
     parser.add_argument("--train_labels_file", type=str, default="ceed_training_labels.pickle", help="Training labels pickle file")
-    parser.add_argument("--val_features_file", type=str, default="ceed_testing_output.pickle", help="Validation features pickle file")
+    parser.add_argument("--val_features_file", type=str, default="ceed_testing_output.pickle", help="Validation features pickle file (must contain eq_data + png)")
     parser.add_argument("--val_labels_file", type=str, default="ceed_testing_labels.pickle", help="Validation labels pickle file")
-    parser.add_argument("--test_features_file", type=str, default="ceed_testing_output.pickle", help="Test features pickle file")
+    parser.add_argument("--test_features_file", type=str, default="ceed_testing_output.pickle", help="Test features pickle file (must contain eq_data + png)")
     parser.add_argument("--test_labels_file", type=str, default="ceed_testing_labels.pickle", help="Test labels pickle file")
     parser.add_argument("--skip_test_eval", action="store_true", help="Disable test evaluation during training")
     parser.add_argument("--train_csv_file", type=str, default="training_data.csv", help="Training CSV source for label generation")
@@ -537,18 +555,16 @@ if __name__ == "__main__":
     
     # Training hyperparameters
     parser.add_argument("--epochs", type=int, default=50, help="Number of training epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training and validation")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size (smaller default due to map memory usage)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay for AdamW")
-    parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")
-    parser.add_argument("--d_state", type=int, default=16, help="Mamba state dimension")
-    parser.add_argument("--mamba_headdim", type=int, default=32, help="Mamba head dimension (default 32 avoids stride issues)")
     parser.add_argument("--num_classes", type=int, default=4, help="Number of classification classes")
-    parser.add_argument(
-        "--mamba_use_mem_eff_path",
-        action="store_true",
-        help="Enable Mamba2 memory-efficient fused path (may fail on stride constraints on some setups)",
-    )
+
+    # SafeNetFull architecture hyperparameters
+    parser.add_argument("--embed_dim", type=int, default=32, help="Embedding dimension for both catalog and map encoders")
+    parser.add_argument("--num_heads", type=int, default=2, help="Number of attention heads in the Vision Transformer")
+    parser.add_argument("--transformer_layers", type=int, default=1, help="Number of Transformer encoder layers")
+    parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate in the Transformer encoder")
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")
@@ -556,7 +572,7 @@ if __name__ == "__main__":
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")
     parser.add_argument("--disable_wandb", action="store_true", help="Disable Weights & Biases logging")
-    parser.add_argument("--wandb_project", type=str, default="quake-mamba2", help="W&B project name")
+    parser.add_argument("--wandb_project", type=str, default="safenet-full", help="W&B project name")
     parser.add_argument("--wandb_entity", type=str, default="", help="W&B entity/team (optional)")
     parser.add_argument("--wandb_run_name", type=str, default="", help="W&B run name (optional)")
     parser.add_argument(

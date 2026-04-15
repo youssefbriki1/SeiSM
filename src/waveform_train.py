@@ -10,8 +10,11 @@ from tqdm import tqdm
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from datasets import load_dataset
-
+import torch.optim.lr_scheduler as lr_scheduler
 from models import QuakeWaveMamba2, WaveformLSTM, WaveformTransformer
+import warnings
+from utils import Muon
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -185,10 +188,64 @@ def train(args):
 
     #print("Compiling model for Hopper Tensor Cores...")
     #model = torch.compile(model)
+    
+    print(f"Model Parameters: {sum(p.numel() for p in model.parameters()):,}")
+    print("Training model...")
 
     criterion = nn.L1Loss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    
+    
+    optimizers = []
+    
+    if args.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizers.append(optimizer)
+        
+    elif args.optimizer == "muon":
+        muon_params = []
+        adamw_params = []
+        
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                continue
+            if param.ndim == 2:
+                muon_params.append(param)
+            else:
+                adamw_params.append(param)
+                
+        opt_muon = Muon(muon_params, lr=args.lr, weight_decay=args.weight_decay, adjust_lr_fn="match_rms_adamw")
+        opt_adamw = torch.optim.AdamW(adamw_params, lr=args.lr, weight_decay=args.weight_decay)
+        
+        optimizers.extend([opt_muon, opt_adamw])
+        
+    else:
+        warnings.warn(f"Unknown optimizer type: {args.optimizer}. Defaulting to AdamW.")
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizers.append(optimizer)
 
+    # --- Scheduler Setup ---
+    schedulers = []
+    if args.lr_scheduler == "cosine":
+        warmup_epochs = args.warmup_epochs 
+        
+        for opt in optimizers:
+            warmup_scheduler = lr_scheduler.LinearLR(
+                opt, 
+                start_factor=0.01, 
+                total_iters=warmup_epochs
+            )
+            cosine_scheduler = lr_scheduler.CosineAnnealingLR(
+                opt, 
+                T_max=(args.epochs - warmup_epochs)
+            )
+            scheduler = lr_scheduler.SequentialLR(
+                opt,
+                schedulers=[warmup_scheduler, cosine_scheduler],
+                milestones=[warmup_epochs] 
+            )
+            schedulers.append(scheduler)
+            
+            
     # --- W&B Setup ---
     wandb = None
     if not args.disable_wandb:
@@ -227,7 +284,9 @@ def train(args):
             
             for x, y in train_bar:
                 x, y = x.to(device), y.to(device)
-                optimizer.zero_grad()
+                
+                for opt in optimizers:
+                    opt.zero_grad()
                 
                 with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
                     preds = model(x)
@@ -235,7 +294,9 @@ def train(args):
                 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                
+                for opt in optimizers:
+                    opt.step()
                 
                 train_loss += loss.item()
                 global_step += 1
@@ -244,10 +305,12 @@ def train(args):
                 if wandb is not None:
                     wandb.log({
                         "train/batch_loss": loss.item(),
-                        "train/lr": optimizer.param_groups[0]["lr"],
+                        "train/lr": optimizers[0].param_groups[0]["lr"],
                         "train/epoch": epoch + 1,
                     }, step=global_step)
-
+            
+            for sched in schedulers:
+                sched.step()
             avg_train_loss = train_loss / len(train_loader)
             
             val_metrics = evaluate_split(
@@ -298,6 +361,12 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=16, help="Number of dataloader workers (Maximized for H100)")
     parser.add_argument("--batch_size", type=int, default=256, help="Batch size (Maximized for 80GB VRAM in BF16)")
     parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate (Increased to compensate for large batch size)")
+    parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "muon"], help="Optimizer type")
+    parser.add_argument("--lr_scheduler", type=str, default="cosine", choices=["cosine", "step", "none"], help="Learning rate scheduler type")
+    parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs for learning rate scheduler")
+    parser.add_argument("--loss", type=str, default="l1", choices=["l1", "mse"], help="Loss function to use") # TODO: Update Losses here
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    
     
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for AdamW")

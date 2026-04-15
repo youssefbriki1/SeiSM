@@ -83,9 +83,12 @@ def get_bin(magnitude):
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate SSM Waveform Model by Magnitude Bins")
     
-    parser.add_argument("--arrow_path", type=str, 
-                        default="/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
-                        help="Path to huggingface arrow file directory")
+    parser.add_argument("--arrow_paths", nargs='+', 
+                        default=[
+                            "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
+                            "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
+                        ],
+                        help="Paths to huggingface arrow file directories")
     parser.add_argument("--csv_path", type=str, 
                         default="/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv",
                         help="Path to CSV containing event magnitudes")
@@ -109,18 +112,27 @@ def evaluate():
     print(f"Using device: {device}")
 
     # 1. Dataset setup
-    arrow_path = str(args.arrow_path)
     csv_path = str(args.csv_path)
-    full_dataset = ArrowSeismicDataset(arrow_path, csv_path)
     
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    _, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42)
+    from torch.utils.data import ConcatDataset
+    individual_datasets = []
+    for path in args.arrow_paths:
+        ds = ArrowSeismicDataset(str(path), csv_path)
+        individual_datasets.append(ds)
+        
+    print("Stitching datasets together via PyTorch ConcatDataset...")
+    full_dataset = ConcatDataset(individual_datasets)
+    print(f"Total Combined Dataset Size: {len(full_dataset)}")
+    
+    train_size = int(0.6 * len(full_dataset))
+    val_size = int(0.2 * len(full_dataset))
+    test_size = len(full_dataset) - train_size - val_size
+    _, _, test_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42)
     )
     
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
@@ -147,9 +159,9 @@ def evaluate():
     all_true = []
     all_pred = []
     
-    print("Running inference on validation set...")
+    print("Running inference on test set...")
     with torch.no_grad():
-        for waveforms, magnitudes in tqdm(val_loader, desc="Evaluating"):
+        for waveforms, magnitudes in tqdm(test_loader, desc="Evaluating"):
             waveforms = waveforms.to(device)
             # Add dummy batch dim if shape is (C, L)
             if waveforms.dim() == 2:

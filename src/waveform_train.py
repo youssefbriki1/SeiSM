@@ -146,14 +146,16 @@ def train(args):
     full_dataset = ConcatDataset(individual_datasets)
     print(f"Total Combined Dataset Size: {len(full_dataset)}")
     
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42)
+    train_size = int(0.6 * len(full_dataset))
+    val_size = int(0.2 * len(full_dataset))
+    test_size = len(full_dataset) - train_size - val_size
+    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42)
     )
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     
     # --- Model, Loss, Optimizer ---
     if args.model_type == "mamba2":
@@ -223,28 +225,30 @@ def train(args):
         optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         optimizers.append(optimizer)
 
-    # --- Scheduler Setup ---
-    schedulers = []
+    schedulers = [] 
     if args.lr_scheduler == "cosine":
-        warmup_epochs = args.warmup_epochs 
+        steps_per_epoch = len(train_loader)
+        warmup_steps = args.warmup_epochs * steps_per_epoch
+        total_steps = args.epochs * steps_per_epoch
         
         for opt in optimizers:
+            cosine_scheduler = lr_scheduler.CosineAnnealingLR(
+                opt, 
+                T_max=(total_steps - warmup_steps)
+            )
+            
             warmup_scheduler = lr_scheduler.LinearLR(
                 opt, 
                 start_factor=0.01, 
-                total_iters=warmup_epochs
+                total_iters=max(1, warmup_steps)
             )
-            cosine_scheduler = lr_scheduler.CosineAnnealingLR(
-                opt, 
-                T_max=(args.epochs - warmup_epochs)
-            )
+            
             scheduler = lr_scheduler.SequentialLR(
                 opt,
                 schedulers=[warmup_scheduler, cosine_scheduler],
-                milestones=[warmup_epochs] 
+                milestones=[warmup_steps] 
             )
-            schedulers.append(scheduler)
-            
+            schedulers.append(scheduler)            
             
     # --- W&B Setup ---
     wandb = None
@@ -309,8 +313,8 @@ def train(args):
                         "train/epoch": epoch + 1,
                     }, step=global_step)
             
-            for sched in schedulers:
-                sched.step()
+                for sched in schedulers:
+                    sched.step()
             avg_train_loss = train_loss / len(train_loader)
             
             val_metrics = evaluate_split(
@@ -348,6 +352,33 @@ def train(args):
 
         global_time = time.time() - global_start_time
         print(f"Training Complete! Total time: {global_time:.2f} seconds ({global_time/60:.2f} minutes / {global_time/3600:.2f} hours).")
+        
+        # --- Final Evaluation on Test Set ---
+        print("\nEvaluating best model on Test Set...")
+        try:
+            model.load_state_dict(torch.load(save_path))
+        except FileNotFoundError:
+            print(f"Warning: Could not find saved model at {save_path}, evaluating final model state instead.")
+            
+        test_metrics = evaluate_split(
+            model=model,
+            dataloader=test_loader,
+            criterion=criterion,
+            device=device,
+            desc="Testing",
+        )
+        print(
+            f"*** Final Test Results ***\n"
+            f"Test MAE: {test_metrics['mae']:.4f} | Test MSE: {test_metrics['mse']:.4f} | Test R2: {test_metrics['r2']:.4f}\n"
+        )
+        
+        if wandb is not None:
+            wandb.log({
+                "test/mae_loss": test_metrics["mae"],
+                "test/mse_loss": test_metrics["mse"],
+                "test/r2_score": test_metrics["r2"],
+            })
+
     finally:
         if wandb is not None:
             wandb.finish()

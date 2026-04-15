@@ -9,7 +9,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.safenet_embeddings import SafeNetFull
+from models.safenet_embeddings import SafeNetFull, SafeNetSSM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -316,20 +316,34 @@ def train(args):
     print(f"[Data] catalog shape: {catalog_shape}, maps shape: {maps_shape}")
     print(f"[Data] num_patches={num_patches}, catalog_features={catalog_features}, map_channels={map_channels}")
 
-    # --- Model: SafeNetFull (multimodal: catalog + maps → LSTM → ViT → classification) ---
+    # --- Model selection ---
     num_classes = args.num_classes
-    model = SafeNetFull(
-        num_classes=num_classes,
-        map_channels=map_channels,
-        catalog_features=catalog_features,
-        embed_dim=args.embed_dim,
-        num_patches=num_patches,
-        num_heads=args.num_heads,
-        transformer_layers=args.transformer_layers,
-        dropout=args.dropout,
-    ).to(device)
-    print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
-          f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
+    if args.model == "safenet_ssm":
+        model = SafeNetSSM(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=args.embed_dim,
+            num_patches=num_patches,
+            d_model=args.d_model,
+            d_state=args.d_state,
+            n_ssm_layers=args.n_ssm_layers,
+        ).to(device)
+        print(f"[Model] SafeNetSSM — embed_dim={args.embed_dim}, d_model={args.d_model}, "
+              f"d_state={args.d_state}, n_ssm_layers={args.n_ssm_layers}")
+    else:
+        model = SafeNetFull(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=args.embed_dim,
+            num_patches=num_patches,
+            num_heads=args.num_heads,
+            transformer_layers=args.transformer_layers,
+            dropout=args.dropout,
+        ).to(device)
+        print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
+              f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
 
     if args.use_focal_loss:
         if args.focal_alpha is not None:
@@ -368,7 +382,7 @@ def train(args):
             name=args.wandb_run_name if args.wandb_run_name else None,
             mode=args.wandb_mode,
             config={
-                "model": "SafeNetFull",
+                "model": args.model,
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
                 "grad_accum_steps": args.grad_accum_steps,
@@ -378,6 +392,9 @@ def train(args):
                 "num_heads": args.num_heads,
                 "transformer_layers": args.transformer_layers,
                 "dropout": args.dropout,
+                "d_model": args.d_model,
+                "d_state": args.d_state,
+                "n_ssm_layers": args.n_ssm_layers,
                 "use_focal_loss": args.use_focal_loss,
                 "focal_gamma": args.focal_gamma,
                 "focal_alpha": args.focal_alpha,
@@ -565,8 +582,11 @@ def train(args):
             wandb.finish()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train SafeNetFull (Multimodal) for Earthquake Forecasting")
-    
+    parser = argparse.ArgumentParser(description="Train SafeNet multimodal models for Earthquake Forecasting")
+
+    # Model selection
+    parser.add_argument("--model", type=str, default="safenet_full", choices=["safenet_full", "safenet_ssm"], help="Model architecture to train")
+
     # Data arguments
     parser.add_argument(
         "--data_dir",
@@ -604,6 +624,11 @@ if __name__ == "__main__":
     parser.add_argument("--num_heads", type=int, default=2, help="Number of attention heads in the Vision Transformer")
     parser.add_argument("--transformer_layers", type=int, default=1, help="Number of Transformer encoder layers")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate in the Transformer encoder")
+
+    # SafeNetSSM architecture hyperparameters
+    parser.add_argument("--d_model", type=int, default=128, help="Mamba SSM hidden dimension")
+    parser.add_argument("--d_state", type=int, default=16, help="Mamba SSM state expansion factor")
+    parser.add_argument("--n_ssm_layers", type=int, default=2, help="Number of stacked Mamba layers")
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")

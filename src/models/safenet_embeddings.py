@@ -305,3 +305,76 @@ class SafeNetFull(SafeNetEmbeddings):
         # --- Drop global token, classify ---
         z = z[:, 1:, :]                                         # (B, 85, 32)
         return self.head(z)                                     # (B, 85, 4)
+
+
+# ---------------------------------------------------------------------------
+# SafeNet SSM: embeddings + Mamba → classification
+# ---------------------------------------------------------------------------
+
+class SafeNetSSM(SafeNetEmbeddings):
+    """SafeNet with Mamba SSM replacing LSTM + ViT.
+
+    Maps/Catalog embeddings are fused and flattened across patches into a
+    single token per timestep.  A stacked residual Mamba processes the
+    temporal sequence, and the final hidden state is projected to per-patch
+    class logits.
+    """
+
+    def __init__(
+        self,
+        num_classes=4,
+        map_channels=5,
+        catalog_features=282,
+        embed_dim=32,
+        num_patches=64,
+        d_model=128,
+        d_state=16,
+        n_ssm_layers=2,
+    ):
+        from mamba_ssm import Mamba
+
+        super().__init__(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=embed_dim,
+            num_patches=num_patches,
+        )
+        fused_dim = embed_dim * 2  # 64
+        input_dim = num_patches * fused_dim + embed_dim  # P*64 + 32
+
+        self.regional_norm = nn.LayerNorm(fused_dim)
+        self.global_norm = nn.LayerNorm(embed_dim)
+        self.proj_in = nn.Linear(input_dim, d_model)
+        self.ssm_layers = nn.ModuleList([
+            Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
+            for _ in range(n_ssm_layers)
+        ])
+        self.ssm_norm = nn.LayerNorm(d_model)
+
+        # Override parent's head: project from d_model to all patch logits
+        self._num_classes = num_classes
+        self.head = nn.Linear(d_model, num_patches * num_classes)
+
+    def forward(self, inputs):
+        z, z_g = self._encode(inputs)   # z: (B,T,P,64), z_g: (B,T,32)
+        B, T, P, D = z.shape
+
+        # --- Norm ---
+        z = self.regional_norm(z)       # (B, T, P, 64)
+        z_g = self.global_norm(z_g)     # (B, T, 32)
+
+        # --- Flatten patches into a single token per timestep ---
+        z = z.reshape(B, T, P * D)                              # (B, T, P*64)
+        z = torch.cat([z, z_g], dim=-1)                         # (B, T, P*64+32)
+
+        # --- Project + Mamba ---
+        z = self.proj_in(z)                                     # (B, T, d_model)
+        for layer in self.ssm_layers:
+            z = z + layer(z)                                    # residual
+        z = self.ssm_norm(z)                                    # (B, T, d_model)
+        z = z[:, -1, :]                                         # (B, d_model)
+
+        # --- Classify ---
+        logits = self.head(z)                                   # (B, P*num_classes)
+        return logits.reshape(B, P, self._num_classes)          # (B, P, num_classes)

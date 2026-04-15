@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.ssm import SpatialSSM
+
 
 # ---------------------------------------------------------------------------
 # Bottleneck blocks (match the TF identity_block / convolutional_block)
@@ -305,3 +307,66 @@ class SafeNetFull(SafeNetEmbeddings):
         # --- Drop global token, classify ---
         z = z[:, 1:, :]                                         # (B, 85, 32)
         return self.head(z)                                     # (B, 85, 4)
+
+
+# ---------------------------------------------------------------------------
+# SafeNet-SSM: embeddings + Mamba SSM (replaces LSTM + ViT)
+# ---------------------------------------------------------------------------
+
+class SafeNetSSM(SafeNetEmbeddings):
+    """SafeNet with SSM temporal backbone: Maps/Catalog embeddings → Mamba SSM → classification.
+
+    Drop-in replacement for SafeNetFull that uses a Mamba SSM per region
+    instead of LSTM + Vision Transformer.
+      1. Fuse maps (32-d) + catalog (32-d) → 64-d per region per timestep
+      2. SpatialSSM across time for each region → d_model-d embedding (last step)
+      3. Linear classification head
+    """
+
+    def __init__(
+        self,
+        num_classes=4,
+        map_channels=5,
+        catalog_features=282,
+        embed_dim=32,
+        num_patches=64,
+        ssm_d_model=128,
+        ssm_d_state=16,
+        ssm_n_layers=2,
+        dropout=0.2,
+    ):
+        super().__init__(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=embed_dim,
+            num_patches=num_patches,
+        )
+        fused_dim = embed_dim * 2  # 64
+
+        self.regional_norm = nn.LayerNorm(fused_dim)
+
+        self.ssm = SpatialSSM(
+            d_input=fused_dim,
+            d_model=ssm_d_model,
+            d_state=ssm_d_state,
+            n_layers=ssm_n_layers,
+        )
+
+        self.head = nn.Sequential(
+            nn.LayerNorm(ssm_d_model),
+            nn.Dropout(dropout),
+            nn.Linear(ssm_d_model, num_classes),
+        )
+
+    def forward(self, inputs):
+        z, _ = self._encode(inputs)                             # (B, T, P, 64)
+        B, T, P, D = z.shape
+
+        z = self.regional_norm(z)                               # (B, T, P, 64)
+
+        z = z.permute(0, 2, 1, 3).reshape(B * P, T, D)         # (B*P, T, 64)
+        z = self.ssm(z)                                         # (B*P, d_model)
+        z = z.reshape(B, P, -1)                                 # (B, P, d_model)
+
+        return self.head(z)                                     # (B, P, num_classes)

@@ -5,16 +5,16 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, precision_recall_fscore_support
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.safenet_embeddings import SafeNetFull
+from models.safenet_embeddings import SafeNetFull, SafeNetSSM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / "src" / "data-processing" / "california" / "data" / "CEED" / "processed"
-DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_safenet_full.pth"
+DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_safenet_multimodal.pth"
 
 
 def resolve_path(path_str: str, base_dir: Path | None = None) -> Path:
@@ -170,6 +170,16 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
     accuracy = sum(int(p == t) for p, t in zip(all_preds, all_targets)) / len(all_targets)
     error = 1.0 - accuracy
 
+    per_p, per_r, per_f1, per_support = precision_recall_fscore_support(
+        all_targets, all_preds, labels=list(range(num_classes)), zero_division=0,
+    )
+
+    class_names = ["M<5", "M5-6", "M6-7", "M≥7"][:num_classes]
+    print(f"\n  {desc} per-class breakdown:")
+    print(f"  {'Class':8s}  {'Precision':>10s}  {'Recall':>8s}  {'F1':>8s}  {'Support':>8s}")
+    for i, name in enumerate(class_names):
+        print(f"  {name:8s}  {per_p[i]:>10.4f}  {per_r[i]:>8.4f}  {per_f1[i]:>8.4f}  {per_support[i]:>8d}")
+
     return {
         "loss": avg_loss,
         "accuracy": accuracy,
@@ -177,6 +187,10 @@ def evaluate_split(model, dataloader, criterion, device, num_classes: int, num_p
         "f1": f1_score(all_targets, all_preds, average='macro', zero_division=0),
         "precision": precision_score(all_targets, all_preds, average='macro', zero_division=0),
         "recall": recall_score(all_targets, all_preds, average='macro', zero_division=0),
+        "per_class_f1": per_f1,
+        "per_class_precision": per_p,
+        "per_class_recall": per_r,
+        "class_names": class_names,
     }
 
 
@@ -304,20 +318,37 @@ def train(args):
     print(f"[Data] catalog shape: {catalog_shape}, maps shape: {maps_shape}")
     print(f"[Data] num_patches={num_patches}, catalog_features={catalog_features}, map_channels={map_channels}")
 
-    # --- Model: SafeNetFull (multimodal: catalog + maps → LSTM → ViT → classification) ---
+    # --- Model selection ---
     num_classes = args.num_classes
-    model = SafeNetFull(
-        num_classes=num_classes,
-        map_channels=map_channels,
-        catalog_features=catalog_features,
-        embed_dim=args.embed_dim,
-        num_patches=num_patches,
-        num_heads=args.num_heads,
-        transformer_layers=args.transformer_layers,
-        dropout=args.dropout,
-    ).to(device)
-    print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
-          f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
+    model_name = args.model
+
+    if model_name == "safenet_ssm":
+        model = SafeNetSSM(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=args.embed_dim,
+            num_patches=num_patches,
+            ssm_d_model=args.ssm_d_model,
+            ssm_d_state=args.ssm_d_state,
+            ssm_n_layers=args.ssm_n_layers,
+            dropout=args.dropout,
+        ).to(device)
+        print(f"[Model] SafeNetSSM — embed_dim={args.embed_dim}, "
+              f"ssm_d_model={args.ssm_d_model}, ssm_n_layers={args.ssm_n_layers}, dropout={args.dropout}")
+    else:
+        model = SafeNetFull(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=args.embed_dim,
+            num_patches=num_patches,
+            num_heads=args.num_heads,
+            transformer_layers=args.transformer_layers,
+            dropout=args.dropout,
+        ).to(device)
+        print(f"[Model] SafeNetFull — embed_dim={args.embed_dim}, num_heads={args.num_heads}, "
+              f"transformer_layers={args.transformer_layers}, dropout={args.dropout}")
 
     if args.use_focal_loss:
         if num_classes != 4:
@@ -352,7 +383,7 @@ def train(args):
             name=args.wandb_run_name if args.wandb_run_name else None,
             mode=args.wandb_mode,
             config={
-                "model": "SafeNetFull",
+                "model": model_name,
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
                 "lr": args.lr,
@@ -499,6 +530,10 @@ def train(args):
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
+                for i, name in enumerate(val_metrics["class_names"]):
+                    log_payload[f"val/{name}_f1"] = val_metrics["per_class_f1"][i]
+                    log_payload[f"val/{name}_precision"] = val_metrics["per_class_precision"][i]
+                    log_payload[f"val/{name}_recall"] = val_metrics["per_class_recall"][i]
                 if test_metrics is not None:
                     log_payload.update(
                         {
@@ -510,6 +545,10 @@ def train(args):
                             "test/recall": test_metrics["recall"],
                         }
                     )
+                    for i, name in enumerate(test_metrics["class_names"]):
+                        log_payload[f"test/{name}_f1"] = test_metrics["per_class_f1"][i]
+                        log_payload[f"test/{name}_precision"] = test_metrics["per_class_precision"][i]
+                        log_payload[f"test/{name}_recall"] = test_metrics["per_class_recall"][i]
                 wandb.log(log_payload, step=global_step)
             
             if val_f1 > best_val_f1:
@@ -567,7 +606,13 @@ if __name__ == "__main__":
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate in the Transformer encoder")
     
     # Model/Loss configuration
+    parser.add_argument("--model", type=str, choices=["safenet_full", "safenet_ssm"], default="safenet_full", help="Model architecture to train")
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")
+
+    # SSM hyperparameters (only used when --model safenet_ssm)
+    parser.add_argument("--ssm_d_model", type=int, default=128, help="SSM hidden dimension")
+    parser.add_argument("--ssm_d_state", type=int, default=16, help="Mamba state expansion factor")
+    parser.add_argument("--ssm_n_layers", type=int, default=2, help="Number of stacked Mamba layers")
     
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")

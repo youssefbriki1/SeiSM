@@ -6,16 +6,16 @@ class QuakeWaveMamba2(nn.Module):
     def __init__(
         self,
         in_channels: int = 3,
-        d_model: int = 128,
-        d_state: int = 16,
+        d_model: int = 256,  
+        d_state: int = 64,  
         d_conv: int = 4,
-        expand: int = 2,
+        expand: int = 4,    
         headdim: int = 64, 
-        n_layers: int = 4,
+        n_layers: int = 8,  
         dropout: float = 0.2,
     ):
         """
-        A Mamba-2 architecture designed for 1D Seismic Waveform Regression.
+        A Scaled-Up Mamba-2 architecture designed for 1D Seismic Waveform Regression.
         Expects input shape: (Batch, 3, 8192)
         Outputs shape: (Batch, 1) -> The predicted continuous magnitude.
         """
@@ -25,6 +25,7 @@ class QuakeWaveMamba2(nn.Module):
         self.cnn_embedder = nn.Sequential(
             nn.Conv1d(in_channels, 64, kernel_size=16, stride=4, padding=6),
             nn.GELU(),
+            # Output channels of the CNN must match the new d_model
             nn.Conv1d(64, d_model, kernel_size=16, stride=2, padding=7),
             nn.GELU()
         )
@@ -42,10 +43,10 @@ class QuakeWaveMamba2(nn.Module):
         self.norm = nn.LayerNorm(d_model)
         
         self.regressor = nn.Sequential(
-            nn.Linear(d_model, 64),
+            nn.Linear(d_model, 128), 
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 1)
+            nn.Linear(128, 1)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

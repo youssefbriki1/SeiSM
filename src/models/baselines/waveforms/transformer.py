@@ -14,13 +14,21 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        # x: (Batch, seq_len, d_model)
         seq_len = x.size(1)
         x = x + self.pe[:, :seq_len, :]
         return x
 
 class WaveformTransformer(nn.Module):
-    def __init__(self, in_channels=3, d_model=128, nhead=8, num_layers=4, dim_feedforward=512, dropout=0.2, output_size=1):
+    def __init__(
+        self, 
+        in_channels=3, 
+        d_model=256,        
+        nhead=16,     
+        num_layers=8,      
+        dim_feedforward=1024, 
+        dropout=0.2, 
+        output_size=1
+    ):
         super(WaveformTransformer, self).__init__()
         
         # (Batch, 3, 8192) -> (Batch, d_model, 1024)
@@ -44,10 +52,10 @@ class WaveformTransformer(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
         self.regressor = nn.Sequential(
-            nn.Linear(d_model, 64),
+            nn.Linear(d_model, 128),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(64, output_size)
+            nn.Linear(128, output_size)
         )
 
     def forward(self, x):
@@ -57,10 +65,8 @@ class WaveformTransformer(nn.Module):
         
         x = self.pos_encoder(x)              # (Batch, 1024, d_model)
         
-        # Pass through the transformer encoder
         transformer_out = self.transformer_encoder(x)  # (Batch, 1024, d_model)
         
-        # Pool over the sequence dimension, similar to QuakeWaveMamba2 and LSTM
         pooled = transformer_out.mean(dim=1) # (Batch, d_model)
         
         magnitude = self.regressor(pooled)   # (Batch, 1)

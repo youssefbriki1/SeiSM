@@ -5,7 +5,7 @@ def download_wandb_checkpoints():
     api = wandb.Api()
     entity = "ift3710-ai-slop"
     project = "safenet-full"
-    run_id = "xf99tlqk"
+    run_id = "f1qhjpik"
     run_path = f"{entity}/{project}/{run_id}"
     
     print(f"Connecting to W&B run: {run_path}...")

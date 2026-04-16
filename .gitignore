@@ -15,3 +15,4 @@ tqdne-0.2.1*
 *.h5
 weights/
 .ipynb_checkpoints/
+.vscode/

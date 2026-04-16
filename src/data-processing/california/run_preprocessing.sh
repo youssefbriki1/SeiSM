@@ -17,15 +17,23 @@ echo "=============================================="
 echo "Working directory: $(pwd)"
 echo ""
 
+<<<<<<< HEAD:src/data-processing/california/run_preprocessing.sh
 # Attempt to load Compute Canada dependencies if available to populate $EBROOTPROJ
 if command -v module &> /dev/null; then
     module load gcc arrow/22.0.0
 fi
 
+=======
+source /scratch/brikiyou/ift3710/env/py1013/bin/activate
+>>>>>>> ba2b263 (whack updae):src/data-processing/california/run_pre_processing.sh
 # Step 1: Download CEED dataset if missing
 if [ ! -f "../../../data/california/events.csv" ]; then
     echo "[Step 1] events.csv not found. Downloading CEED dataset..."
+<<<<<<< HEAD:src/data-processing/california/run_preprocessing.sh
     python3 ceed_loader.py --catalog_path ../../../data/california/catalog.parquet --base_path ../../../data/california/
+=======
+    python3 ceed_loader.py
+>>>>>>> ba2b263 (whack updae):src/data-processing/california/run_pre_processing.sh
     echo "[Step 1] Download complete."
 else
     echo "[Step 1] events.csv already exists. Skipping download."

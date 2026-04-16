@@ -38,8 +38,8 @@ mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"
 mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 
 # ---- Allow ComputeCanada LMOD to manage Python environment variables ----
-# unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
-# export PYTHONNOUSERSITE=1
+unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
+export PYTHONNOUSERSITE=1
 export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 
 # ---- Set WandB log directory under $PROJECT_ROOT ----

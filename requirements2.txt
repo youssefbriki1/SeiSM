@@ -1,0 +1,19 @@
+#requirements.txt used for calculquebec's cluster
+
+# Core ML
+torch
+numpy<2
+pandas
+scikit-learn
+
+# SSM model
+mamba_ssm
+causal-conv1d>=1.4.0
+transformers<4.40
+
+# Experiment tracking
+wandb==0.24.0
+pydantic<2
+
+# Utilities
+tqdm

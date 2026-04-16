@@ -9,7 +9,7 @@ from datasets import load_dataset
 from torch.utils.data import ConcatDataset, DataLoader
 
 # Import models
-from models import QuakeWaveMamba2, WaveformLSTM, WaveformTransformer
+from models import QuakeWaveMamba2, BiWaveformLSTM, WaveformTransformer
 
 class ArrowSeismicDataset(torch.utils.data.Dataset):
     def __init__(self, arrow_dir_path: str, csv_path: str):
@@ -85,29 +85,23 @@ def main():
     # Focusing on AdamW since they performed best
     models_config = {
         "Mamba2 (SSM)": {
-            "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/best_mamba2_adamw_waveform.pth",
+            "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/waveforms/best_mamba2_adamw_waveform.pth",
             "model": QuakeWaveMamba2(in_channels=3, d_model=128, d_state=64, n_layers=4, headdim=32),
             "color": "#ff7f0e", # Orange
             "time": 1038.62
         },
         "Transformer": {
-            "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/best_transformer_adamw_waveform.pth",
+            "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/waveforms/best_transformer_adamw_waveform.pth",
             "model": WaveformTransformer(in_channels=3, d_model=128, nhead=8, num_layers=4, dim_feedforward=512, dropout=0.2, output_size=1),
             "color": "#2ca02c", # Green
             "time": 1832.67
-        },
-        "LSTM": {
-            "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/best_lstm_adamw_waveform.pth",
-            "model": WaveformLSTM(in_channels=3, d_model=128, hidden_size=128, num_layers=2, dropout=0.2, output_size=1),
-            "color": "#1f77b4", # Blue
-            "time": 8108.02
         }
     }
 
     results = {}
 
     for name, config in models_config.items():
-        print(f"\\nEvaluating {name}...")
+        print(f"\nEvaluating {name}...")
         model = config["model"].to(device)
         model.load_state_dict(torch.load(config["checkpoint"], map_location=device))
         model.eval()
@@ -154,11 +148,25 @@ def main():
             else:
                 model_bin_maes[name][b] = 0.0
 
+    # ---------------------------------------------------------
+    # PRINT MAEs PER MAGNITUDE CLASS
+    # ---------------------------------------------------------
+    print("\n" + "="*50)
+    print("MAE RESULTS BY MAGNITUDE CLASS")
+    print("="*50)
+    for name in models_config.keys():
+        print(f"\n--- {name} ---")
+        for b in bins:
+            if bin_counts[b] > 0:
+                print(f"Bin {b:<4} (n={bin_counts[b]:<5}): MAE = {model_bin_maes[name][b]:.4f}")
+    print("="*50 + "\n")
+    # ---------------------------------------------------------
+
     # 4. Generate Visualizations
-    out_dir = "/scratch/brikiyou/ift3710/plots"
+    out_dir = "/scratch/brikiyou/ift3710/plots/fake"
     os.makedirs(out_dir, exist_ok=True)
     
-    print("\\nGenerating combined visualizations...")
+    print("\nGenerating combined visualizations...")
     
     # Plot 1: Grouped Bar Chart of MAE per Bin
     fig, ax = plt.subplots(figsize=(14, 7))
@@ -166,7 +174,6 @@ def main():
     valid_bins = [b for b in bins if bin_counts[b] > 0]
     x = np.arange(len(valid_bins))
     width = 0.25
-    
     for i, (name, config) in enumerate(models_config.items()):
         maes = [model_bin_maes[name][b] for b in valid_bins]
         ax.bar(x + i*width - width, maes, width, label=name, color=config["color"], edgecolor='black', alpha=0.8)
@@ -175,7 +182,7 @@ def main():
     ax.set_xlabel("Magnitude Range", fontsize=12)
     ax.set_ylabel("Mean Absolute Error (MAE)", fontsize=12)
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{b}\\n(n={bin_counts[b]})" for b in valid_bins])
+    ax.set_xticklabels([f"{b}\n(n={bin_counts[b]})" for b in valid_bins])
     ax.legend(fontsize=12)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     
@@ -203,7 +210,7 @@ def main():
         ax.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2)
         
         mae_overall = np.mean(np.abs(results[name]["true"] - results[name]["pred"]))
-        ax.set_title(f"{name}\\nOverall MAE: {mae_overall:.4f}", fontsize=13)
+        ax.set_title(f"{name}\nOverall MAE: {mae_overall:.4f}", fontsize=13)
         ax.set_xlabel("True Magnitude")
         if i == 0:
             ax.set_ylabel("Predicted Magnitude")
@@ -305,7 +312,7 @@ def main():
     plt.savefig(os.path.join(out_dir, "hardware_requirements_comparison.png"), dpi=300)
     plt.close()
     
-    print(f"\\nAll plots saved successfully to {out_dir}")
+    print(f"\nAll plots saved successfully to {out_dir}")
 
 if __name__ == "__main__":
     main()

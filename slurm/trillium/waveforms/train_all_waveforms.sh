@@ -19,7 +19,7 @@ MAIN_PY=$PROJECT_ROOT/src/waveform_train.py
 mkdir -p "$PROJECT_ROOT/slurm_logs" "$PROJECT_ROOT/checkpoints"
 source "$PROJECT_ROOT/env/py1013/bin/activate"
 
-MODELS=("mamba2"  "lstm" "transformer")
+MODELS=("mamba2"  "bi_lstm" "transformer")
 OPTIMIZERS=("adamw" "adamw"  "adamw")
 
 MODEL=${MODELS[$SLURM_ARRAY_TASK_ID]}
@@ -37,13 +37,13 @@ echo "======================================"
 CMD="python $MAIN_PY --model_type $MODEL --optimizer $OPT --wandb_entity ift3710-ai-slop --wandb_project quake-wave-mamba2 --wandb_run_name $RUN_NAME --save_path $SAVE_PATH --epochs 30 --wandb_mode offline"
 
 # Injected the scaled-up arguments for all models
-if [ "$MODEL" == "lstm" ]; then
-    CMD="$CMD --lstm_hidden_size 256 --lstm_layers 4 --lstm_dropout 0.2 --lstm_bidirectional"
-elif [ "$MODEL" == "transformer" ]; then
-    CMD="$CMD --d_model 256 --tf_layers 8 --tf_nhead 16 --tf_dim_feedforward 1024 --tf_dropout 0.2"
-elif [ "$MODEL" == "mamba2" ]; then
-    CMD="$CMD --d_model 256 --mamba_layers 8 --mamba_d_state 64 --mamba_expand 4 --mamba_dropout 0.2"
-fi
+# if [ "$MODEL" == "lstm" ]; then
+#     CMD="$CMD --lstm_hidden_size 256 --lstm_layers 4 --lstm_dropout 0.2 --lstm_bidirectional"
+# elif [ "$MODEL" == "transformer" ]; then
+#     CMD="$CMD --d_model 256 --tf_layers 8 --tf_nhead 16 --tf_dim_feedforward 1024 --tf_dropout 0.2"
+# elif [ "$MODEL" == "mamba2" ]; then
+#     CMD="$CMD --d_model 256 --mamba_layers 8 --mamba_d_state 64 --mamba_expand 4 --mamba_dropout 0.2"
+# fi
 
 # Run it!
 eval $CMD

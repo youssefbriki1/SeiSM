@@ -160,30 +160,12 @@ def train(args):
     # --- Model, Loss, Optimizer ---
     if args.model_type == "mamba2":
         model = QuakeWaveMamba2(
-            in_channels=3,
-            d_model=args.d_model,
-            d_state=args.d_state,
-            n_layers=args.n_layers,
-            headdim=args.mamba_headdim,
         ).to(device)
-    elif args.model_type == "lstm":
+    elif args.model_type == "bi_lstm":
         model = BiWaveformLSTM(
-            in_channels=3,
-            d_model=args.d_model,
-            hidden_size=args.lstm_hidden_size,
-            num_layers=args.lstm_layers,
-            dropout=args.lstm_dropout,
-            output_size=1
         ).to(device)
     elif args.model_type == "transformer":
         model = WaveformTransformer(
-            in_channels=3,
-            d_model=args.d_model,
-            nhead=args.tf_nhead,
-            num_layers=args.tf_layers,
-            dim_feedforward=args.tf_dim_feedforward,
-            dropout=args.tf_dropout,
-            output_size=1
         ).to(device)
     else:
         raise ValueError(f"Unknown model_type: {args.model_type}")
@@ -403,7 +385,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.01, help="Weight decay for AdamW")
     
     # Model type
-    parser.add_argument("--model_type", type=str, choices=["mamba2", "lstm", "transformer"], default="mamba2", help="Model architecture to use")
+    parser.add_argument("--model_type", type=str, choices=["mamba2", "bi_lstm", "transformer"], default="mamba2", help="Model architecture to use")
 
     # Mamba2 parameters
     parser.add_argument("--d_model", type=int, default=128, help="Model hidden dimension")

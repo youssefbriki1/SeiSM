@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from datasets import load_dataset
 import torch.optim.lr_scheduler as lr_scheduler
-from models import QuakeWaveMamba2, WaveformLSTM, WaveformTransformer
+from models import QuakeWaveMamba2, BiWaveformLSTM, WaveformTransformer
 import warnings
 from utils import Muon
 
@@ -167,7 +167,7 @@ def train(args):
             headdim=args.mamba_headdim,
         ).to(device)
     elif args.model_type == "lstm":
-        model = WaveformLSTM(
+        model = BiWaveformLSTM(
             in_channels=3,
             d_model=args.d_model,
             hidden_size=args.lstm_hidden_size,

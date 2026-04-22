@@ -7,6 +7,6 @@ except Exception as e:
     warnings.warn(f"Failed to import QuakeMamba2: {type(e).__name__}: {e}")
     QuakeMamba2 = None
 
-from .safenet_embeddings import SafeNetEmbeddings, SafeNetFull, SafeNetSSM
+from .safenet_embeddings import SafeNetEmbeddings, SafeNetFull, SeiSM
 
-__all__ = ['ResNetBlock', 'QuakeMamba2', 'SafeNetEmbeddings', 'SafeNetFull', 'SafeNetSSM']
+__all__ = ['ResNetBlock', 'QuakeMamba2', 'SafeNetEmbeddings', 'SafeNetFull', 'SeiSM']

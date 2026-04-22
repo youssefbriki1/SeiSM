@@ -9,7 +9,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.safenet_embeddings import SafeNetFull, SafeNetSSM
+from models.safenet_embeddings import SafeNetFull, SeiSM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -319,7 +319,7 @@ def train(args):
     # --- Model selection ---
     num_classes = args.num_classes
     if args.model == "safenet_ssm":
-        model = SafeNetSSM(
+        model = SeiSM(
             num_classes=num_classes,
             map_channels=map_channels,
             catalog_features=catalog_features,
@@ -329,7 +329,7 @@ def train(args):
             d_state=args.d_state,
             n_ssm_layers=args.n_ssm_layers,
         ).to(device)
-        print(f"[Model] SafeNetSSM — embed_dim={args.embed_dim}, d_model={args.d_model}, "
+        print(f"[Model] SeiSM — embed_dim={args.embed_dim}, d_model={args.d_model}, "
               f"d_state={args.d_state}, n_ssm_layers={args.n_ssm_layers}")
     else:
         model = SafeNetFull(
@@ -625,7 +625,7 @@ if __name__ == "__main__":
     parser.add_argument("--transformer_layers", type=int, default=1, help="Number of Transformer encoder layers")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate in the Transformer encoder")
 
-    # SafeNetSSM architecture hyperparameters
+    # SeiSM architecture hyperparameters
     parser.add_argument("--d_model", type=int, default=128, help="Mamba SSM hidden dimension")
     parser.add_argument("--d_state", type=int, default=16, help="Mamba SSM state expansion factor")
     parser.add_argument("--n_ssm_layers", type=int, default=2, help="Number of stacked Mamba layers")

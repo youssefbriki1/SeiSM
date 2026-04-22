@@ -311,7 +311,7 @@ class SafeNetFull(SafeNetEmbeddings):
 # SafeNet SSM: embeddings + Mamba → classification
 # ---------------------------------------------------------------------------
 
-class SafeNetSSM(SafeNetEmbeddings):
+class SeiSM(SafeNetEmbeddings):
     """SafeNet with Mamba SSM replacing LSTM + ViT.
 
     Maps/Catalog embeddings are fused and flattened across patches into a

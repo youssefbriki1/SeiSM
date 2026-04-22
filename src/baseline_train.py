@@ -127,7 +127,12 @@ def evaluate_split(
 
     avg_loss = split_loss / len(dataloader)
     accuracy = sum(int(p == t) for p, t in zip(all_preds, all_targets)) / len(all_targets)
-    return {
+    labels_list = list(range(num_classes))
+    f1_per_class = f1_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+    precision_per_class = precision_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+    recall_per_class = recall_score(all_targets, all_preds, labels=labels_list, average=None, zero_division=0)
+
+    metrics = {
         "loss": avg_loss,
         "accuracy": accuracy,
         "error": 1.0 - accuracy,
@@ -135,6 +140,13 @@ def evaluate_split(
         "precision": precision_score(all_targets, all_preds, average="macro", zero_division=0),
         "recall": recall_score(all_targets, all_preds, average="macro", zero_division=0),
     }
+
+    for i in range(num_classes):
+        metrics[f"class_{i}_f1"] = float(f1_per_class[i])
+        metrics[f"class_{i}_precision"] = float(precision_per_class[i])
+        metrics[f"class_{i}_accuracy"] = float(recall_per_class[i])
+
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +195,14 @@ def train(args: argparse.Namespace) -> None:
 
     # ── Loss ──────────────────────────────────────────────────────────────
     if args.use_focal_loss:
-        class_weights = torch.tensor([0.1, 1.0, 5.0, 20.0], device=device)
-        criterion = FocalLoss(alpha=class_weights, gamma=2.0)
-        print("Using Focal Loss.")
+        if args.focal_alpha is not None:
+            if len(args.focal_alpha) != 4:
+                raise ValueError(f"--focal_alpha must have 4 elements, got {len(args.focal_alpha)}")
+            class_weights = torch.tensor(args.focal_alpha, device=device)
+        else:
+            class_weights = torch.tensor([1.0, 4.0, 15.0, 78.0], device=device)
+        criterion = FocalLoss(alpha=class_weights, gamma=args.focal_gamma)
+        print("Using Focal Loss to handle class imbalance.")
     else:
         criterion = nn.CrossEntropyLoss()
         print("Using Cross Entropy Loss.")
@@ -217,6 +234,7 @@ def train(args: argparse.Namespace) -> None:
                 "model": args.model,
                 "epochs": args.epochs,
                 "batch_size": args.batch_size,
+                "grad_accum_steps": args.grad_accum_steps,
                 "lr": args.lr,
                 "weight_decay": args.weight_decay,
                 "hidden_size": args.hidden_size,
@@ -226,6 +244,9 @@ def train(args: argparse.Namespace) -> None:
                 "num_patches": num_patches,
                 "num_features": num_features,
                 "use_focal_loss": args.use_focal_loss,
+                "focal_gamma": args.focal_gamma,
+                "focal_alpha": args.focal_alpha,
+                "data_dir": str(data_dir),
             },
         )
         wandb.watch(model, log="all", log_freq=args.wandb_log_freq)
@@ -241,21 +262,26 @@ def train(args: argparse.Namespace) -> None:
             train_loss = 0.0
             train_correct = 0
             train_total = 0
+            optimizer.zero_grad()
 
-            for x, y in tqdm(train_loader, desc="Training"):
+            for i, (x, y) in enumerate(tqdm(train_loader, desc="Training")):
                 x, y = _to_device(x, device), y.to(device)
-                optimizer.zero_grad()
 
                 logits = model(x).reshape(-1, num_classes)   # (batch*85, classes)
                 y_flat = y.view(-1)                        # (batch*85,)
 
                 loss = criterion(logits, y_flat)
+                loss_item = loss.item()
+                loss = loss / args.grad_accum_steps
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
+                
+                if (i + 1) % args.grad_accum_steps == 0 or (i + 1) == len(train_loader):
+                    nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    optimizer.step()
+                    optimizer.zero_grad()
 
                 preds = torch.argmax(logits, dim=1)
-                train_loss += loss.item()
+                train_loss += loss_item
                 train_correct += (preds == y_flat).sum().item()
                 train_total += y_flat.numel()
                 global_step += 1
@@ -263,7 +289,7 @@ def train(args: argparse.Namespace) -> None:
                 if wandb is not None:
                     wandb.log(
                         {
-                            "train/batch_loss": loss.item(),
+                            "train/batch_loss": loss_item,
                             "train/batch_error": 1.0 - (preds == y_flat).float().mean().item(),
                             "train/lr": optimizer.param_groups[0]["lr"],
                         },
@@ -282,17 +308,29 @@ def train(args: argparse.Namespace) -> None:
                 f"Train Loss: {avg_train_loss:.4f} | Train Error: {1 - train_accuracy:.4f} | "
                 f"Val Loss: {val_metrics['loss']:.4f} | Val Error: {val_metrics['error']:.4f}"
             )
+            val_class_accs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
+            val_class_precs = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
+            val_class_f1s = " | ".join([f"C{i}: {val_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
             print(
                 f"Val Macro-F1: {val_metrics['f1']:.4f} | "
                 f"Precision: {val_metrics['precision']:.4f} | "
                 f"Recall: {val_metrics['recall']:.4f}"
             )
+            print(f"Val Class Accuracies: {val_class_accs}")
+            print(f"Val Class Precisions: {val_class_precs}")
+            print(f"Val Class F1:         {val_class_f1s}")
             if test_metrics is not None:
+                test_class_accs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_accuracy', 0.0)*100:.1f}%" for i in range(num_classes)])
+                test_class_precs = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_precision', 0.0):.4f}" for i in range(num_classes)])
+                test_class_f1s = " | ".join([f"C{i}: {test_metrics.get(f'class_{i}_f1', 0.0):.4f}" for i in range(num_classes)])
                 print(
                     f"Test Loss: {test_metrics['loss']:.4f} | "
                     f"Test Error: {test_metrics['error']:.4f} | "
                     f"Test Macro-F1: {test_metrics['f1']:.4f}"
                 )
+                print(f"Test Class Accuracies: {test_class_accs}")
+                print(f"Test Class Precisions: {test_class_precs}")
+                print(f"Test Class F1:         {test_class_f1s}")
 
             if wandb is not None:
                 log_payload = {
@@ -308,6 +346,9 @@ def train(args: argparse.Namespace) -> None:
                     "best/val_macro_f1": best_val_f1,
                     "epoch": epoch + 1,
                 }
+                for k, v in val_metrics.items():
+                    if k.startswith("class_"):
+                        log_payload[f"val/{k}"] = v
                 if test_metrics is not None:
                     log_payload.update({
                         "test/loss": test_metrics["loss"],
@@ -360,9 +401,10 @@ if __name__ == "__main__":
     parser.add_argument("--skip_test_eval", action="store_true")
 
     # Training hyper-parameters
-    parser.add_argument("--epochs",       type=int,   default=50)
-    parser.add_argument("--batch_size",   type=int,   default=16)
-    parser.add_argument("--lr",           type=float, default=1e-3)
+    parser.add_argument("--epochs",     type=int,   default=20)
+    parser.add_argument("--batch_size", type=int,   default=32)
+    parser.add_argument("--grad_accum_steps", type=int, default=1)
+    parser.add_argument("--lr",         type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--num_classes",  type=int,   default=4)
 
@@ -371,8 +413,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers",  type=int,   default=2)
     parser.add_argument("--dropout",     type=float, default=0.3)
 
-    # Loss
+    # Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true")
+    parser.add_argument("--focal_gamma", type=float, default=2.0)
+    parser.add_argument("--focal_alpha", type=float, nargs="+", default=None)
 
     # W&B
     parser.add_argument("--disable_wandb",  action="store_true")

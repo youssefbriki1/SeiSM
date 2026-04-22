@@ -1,5 +1,5 @@
 import torch.nn as nn
-from mamba_ssm import Mamba2
+from mamba_ssm.modules.mamba2 import Mamba2
 
 
 class QuakeMamba2(nn.Module):

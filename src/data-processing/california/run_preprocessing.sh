@@ -21,10 +21,11 @@ echo ""
 if command -v module &> /dev/null; then
     module load gcc arrow/22.0.0
 fi
+
 # Step 1: Download CEED dataset if missing
 if [ ! -f "../../../data/california/events.csv" ]; then
     echo "[Step 1] events.csv not found. Downloading CEED dataset..."
-    python3 ceed_loader.py
+    python3 ceed_loader.py --catalog_path ../../../data/california/catalog.parquet --base_path ../../../data/california/
     echo "[Step 1] Download complete."
 else
     echo "[Step 1] events.csv already exists. Skipping download."

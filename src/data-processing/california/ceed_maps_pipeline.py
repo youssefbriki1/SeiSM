@@ -12,7 +12,7 @@ import sys
 from ceed_loader import CEEDdataset
 from ceed_maps_builder import CEEDmaps
 
-def run_map_pipeline(start_year, end_year):
+def run_map_pipeline(start_year, end_year, event_csv_path=None):
 
     OUTPUT = Path(__file__).parent.parent.parent.parent / 'data' / 'california' / 'cal_maps'
     OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -51,7 +51,7 @@ def run_map_pipeline(start_year, end_year):
     for year in range(start_year, end_year+1):
 
         print(f"Processing year {year} ...")
-        tensor = builder.build_year_tensor(year)
+        tensor = builder.build_year_tensor(year, event_csv_path=event_csv_path)
         patches = builder.extract_patches(tensor)
 
         np.save(OUTPUT / f"tensor_{year}.npy", tensor)

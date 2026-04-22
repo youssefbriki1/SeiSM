@@ -231,17 +231,19 @@ class CEEDmaps:
     # YEAR TENSOR
     # -----------------------------
 
-    def build_year_tensor(self, year)-> np.ndarray:
+    def build_year_tensor(self, year, event_csv_path=None)-> np.ndarray:
         """Build a 5-channel spatial tensor for a specific year"""
 
         CEED_DIR = Path(__file__).parent.parent.parent.parent / 'data' / 'california' 
         # events = self.ds.get_events_by_year(year)
-        event_csv_path = CEED_DIR / 'events_preprocessed_1987_2010.csv'
-        if(year > 2010):
-            event_csv_path = CEED_DIR / 'events_preprocessed_2002_2020.csv'
+        if event_csv_path is None:
+            event_csv_path = CEED_DIR / 'events_preprocessed_1987_2010.csv'
+            if(year > 2010):
+                event_csv_path = CEED_DIR / 'events_preprocessed_2002_2020.csv'
         
+        map_path_file = Path(__file__).parent / 'map_outline.jpg'
         EQ_map = ImageProcessing(
-            map_path="map_outline.jpg",
+            map_path=str(map_path_file),
             event_csv_path=event_csv_path,
             patch_csv_path= CEED_DIR / 'png_list_to_patchxy.csv',
             cols= int(self.grid_size/self.patch_size),

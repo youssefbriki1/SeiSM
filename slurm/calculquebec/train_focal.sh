@@ -58,9 +58,9 @@ $VENV_PY -I -c "import numpy; print('numpy OK:', numpy.__version__)"
 
 # ---- Execution ----
 cd "$PROJECT_ROOT"
-echo "[Command] : srun $VENV_PY $MAIN_PY --model safenet_ssm --use_focal_loss --data_dir $DATA_DIR --wandb_mode offline $*"
+echo "[Command] : srun $VENV_PY $MAIN_PY --model SeiSM --use_focal_loss --data_dir $DATA_DIR --wandb_mode offline $*"
 srun --export=ALL "$VENV_PY" "$MAIN_PY" \
-  --model safenet_ssm \
+  --model SeiSM \
   --data_dir "$DATA_DIR" \
   --use_focal_loss \
   --wandb_mode offline \

@@ -545,7 +545,7 @@ if __name__ == '__main__':
     print("TRAINING (target years 1996-2010)")
     print("="*60)
     df_train = prepare_dataframe(load_and_adapt(TRAIN_START, TRAIN_END))
-    run_map_pipeline(TRAIN_START, TRAIN_END)
+    run_map_pipeline(TRAIN_START, TRAIN_END, event_csv_path=f"{CEED_DIR}/events_preprocessed_{TRAIN_START}_{TRAIN_END}.csv")
     build_pickle(df_train, str(CEED_DIR / 'training_output.pickle'),
                  norm_start=1988, target_years=list(range(1996, 2011)))
     build_labels(df_train, str(CEED_DIR / 'training_labels.pickle'),
@@ -557,7 +557,7 @@ if __name__ == '__main__':
     print("TESTING (target years 2011-2020)")
     print("="*60)
     df_test = prepare_dataframe(load_and_adapt(TEST_START, TEST_END))
-    run_map_pipeline(TEST_START, TEST_END)
+    run_map_pipeline(TEST_START, TEST_END, event_csv_path=f"{CEED_DIR}/events_preprocessed_{TEST_START}_{TEST_END}.csv")
     build_pickle(df_test, str(CEED_DIR / 'testing_output.pickle'),
                  norm_start=2002, target_years=list(range(2011, 2021)))
     build_labels(df_test, str(CEED_DIR / 'testing_labels.pickle'),

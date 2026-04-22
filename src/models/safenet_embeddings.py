@@ -311,7 +311,7 @@ class SafeNetFull(SafeNetEmbeddings):
 # SafeNet SSM: embeddings + Mamba → classification
 # ---------------------------------------------------------------------------
 
-class SafeNetSSM(SafeNetEmbeddings):
+class SeiSM(SafeNetEmbeddings):
     """SafeNet with Mamba SSM replacing LSTM + ViT.
 
     Maps/Catalog embeddings are fused and flattened across patches into a
@@ -331,7 +331,13 @@ class SafeNetSSM(SafeNetEmbeddings):
         d_state=16,
         n_ssm_layers=2,
     ):
-        from mamba_ssm import Mamba
+        try:
+            from mamba_ssm import Mamba
+            use_minimal = False
+        except ImportError:
+            print("Warning: mamba_ssm not found. Using mamba_minimal fallback.")
+            from .mamba_minimal import MambaBlock, ModelArgs
+            use_minimal = True
 
         super().__init__(
             num_classes=num_classes,
@@ -346,10 +352,19 @@ class SafeNetSSM(SafeNetEmbeddings):
         self.regional_norm = nn.LayerNorm(fused_dim)
         self.global_norm = nn.LayerNorm(embed_dim)
         self.proj_in = nn.Linear(input_dim, d_model)
-        self.ssm_layers = nn.ModuleList([
-            Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
-            for _ in range(n_ssm_layers)
-        ])
+        
+        if use_minimal:
+            # Create a dummy ModelArgs (n_layer and vocab_size aren't used by MambaBlock)
+            args = ModelArgs(d_model=d_model, d_state=d_state, d_conv=4, expand=2, n_layer=1, vocab_size=1)
+            self.ssm_layers = nn.ModuleList([
+                MambaBlock(args) for _ in range(n_ssm_layers)
+            ])
+        else:
+            self.ssm_layers = nn.ModuleList([
+                Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
+                for _ in range(n_ssm_layers)
+            ])
+
         self.ssm_norm = nn.LayerNorm(d_model)
 
         # Override parent's head: project from d_model to all patch logits

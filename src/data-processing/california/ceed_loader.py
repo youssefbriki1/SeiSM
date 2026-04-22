@@ -257,8 +257,14 @@ class CEEDdataset:
 # TESTING
 # ---------------------------------------------------------------------------
 def main() -> dict:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--catalog_path', type=str, default=None)
+    parser.add_argument('--base_path', type=str, default=None)
+    args = parser.parse_args()
+
     # Initialize
-    ceed = CEEDdataset()
+    ceed = CEEDdataset(catalog_path=args.catalog_path, base_path=args.base_path)
     
     # Build catalog (downloads CSV and saves Parquet)
     ceed.build_catalog()

@@ -318,7 +318,7 @@ def train(args):
 
     # --- Model selection ---
     num_classes = args.num_classes
-    if args.model == "safenet_ssm":
+    if args.model == "SeiSM":
         model = SeiSM(
             num_classes=num_classes,
             map_channels=map_channels,
@@ -585,7 +585,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train SafeNet multimodal models for Earthquake Forecasting")
 
     # Model selection
-    parser.add_argument("--model", type=str, default="safenet_full", choices=["safenet_full", "safenet_ssm"], help="Model architecture to train")
+    parser.add_argument("--model", type=str, default="SeiSM", choices=["safenet_full", "SeiSM"], help="Model architecture to train")
 
     # Data arguments
     parser.add_argument(

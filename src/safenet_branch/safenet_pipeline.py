@@ -1,5 +1,5 @@
 """
-safenet_pipeline.py — SafeNet-like model pipeline, dataset-agnostic.
+safenet_pipeline.py — SafeNet-like model pipeline
 
 Usage:
     pipeline.smoke_test()   # sanity check shapes

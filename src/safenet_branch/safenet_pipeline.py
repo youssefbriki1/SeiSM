@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-pipeline.py — SafeNet-like model pipeline, dataset-agnostic.
+safenet_pipeline.py — SafeNet-like model pipeline, dataset-agnostic.
 
 Usage:
     pipeline.smoke_test()   # sanity check shapes
@@ -13,6 +12,8 @@ import time
 import pickle
 import subprocess
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 import torch
@@ -30,18 +31,15 @@ from utils.dataset import MultimodalSafeNetDataset
 from utils.focal_loss import FocalLoss
 
 # ═══════════════════════════════════════════════════════════════════════
-# CONSTANTS
+# CONSTANTS 
 # ═══════════════════════════════════════════════════════════════════════
 
-DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
-EMBED_DIM    = 32
-FUSED_DIM    = EMBED_DIM * 2   # 64
-SEQ_LEN      = 10
-SSM_D_MODEL  = 128
-SSM_D_STATE  = 16
-SSM_N_LAYERS = 2
-NUM_CLASSES  = 4
-CLASS_NAMES  = ["M<5", "M5-6", "M6-7", "M≥7"]
+DEVICE      = "cuda" if torch.cuda.is_available() else "cpu"
+EMBED_DIM   = 32
+FUSED_DIM   = EMBED_DIM * 2   # 64
+SEQ_LEN     = 10
+NUM_CLASSES = 4
+CLASS_NAMES = ["M<5", "M5-6", "M6-7", "M≥7"]
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -55,21 +53,37 @@ class SafeNetPipeline:
         data_dir,
         preprocessing_script,
         num_patches,
+        # ── Pickles ────────────────────────────────────────────────
         training_pickle    = "training_output.pickle",
         testing_pickle     = "testing_output.pickle",
         training_labels    = "training_labels.pickle",
         testing_labels     = "testing_labels.pickle",
         ssm1_output_pickle = "ssm1_output.pickle",
+        # ── Training hyperparams ───────────────────────────────────
         num_epochs         = 20,
         learning_rate      = 1e-4,
-        class_weights      = None,  # e.g. torch.tensor([1.0, 4.0, 15.0, 78.0])
+        focal_gamma        = 2.0,
+        class_weights      = None,   # torch.Tensor or None
+        # ── SSM architecture ───────────────────────────────────────
+        ssm_d_model        = 128,
+        ssm_d_state        = 16,
+        ssm_n_layers       = 2,
+        # ── W&B ────────────────────────────────────────────────────
+        wandb_run          = None,   # live wandb.Run object, or None
+        wandb_log_freq     = 50,     # log every N training batches
     ):
         self.data_dir             = Path(data_dir)
         self.preprocessing_script = preprocessing_script
         self.num_patches          = num_patches
         self.num_epochs           = num_epochs
         self.learning_rate        = learning_rate
+        self.focal_gamma          = focal_gamma
         self.class_weights        = class_weights
+        self.ssm_d_model          = ssm_d_model
+        self.ssm_d_state          = ssm_d_state
+        self.ssm_n_layers         = ssm_n_layers
+        self.wandb_run            = wandb_run
+        self.wandb_log_freq       = wandb_log_freq
 
         self.training_pickle    = self.data_dir / training_pickle
         self.testing_pickle     = self.data_dir / testing_pickle
@@ -91,12 +105,12 @@ class SafeNetPipeline:
 
         spatial_ssm = SpatialSSM(
             d_input  = FUSED_DIM,
-            d_model  = SSM_D_MODEL,
-            d_state  = SSM_D_STATE,
-            n_layers = SSM_N_LAYERS,
+            d_model  = self.ssm_d_model,
+            d_state  = self.ssm_d_state,
+            n_layers = self.ssm_n_layers,
         ).to(DEVICE)
 
-        head = nn.Linear(SSM_D_MODEL, NUM_CLASSES).to(DEVICE)
+        head = nn.Linear(self.ssm_d_model, NUM_CLASSES).to(DEVICE)
 
         return embedder, spatial_ssm, head
 
@@ -120,8 +134,8 @@ class SafeNetPipeline:
 
         B, T, P, D = z.shape
         x       = z.permute(0, 2, 1, 3).reshape(B * P, T, D)
-        ssm_out = spatial_ssm(x).reshape(B, P, SSM_D_MODEL)  # (B, patches, 128)
-        logits  = head(ssm_out)                               # (B, patches, 4)
+        ssm_out = spatial_ssm(x).reshape(B, P, self.ssm_d_model)  # (B, patches, d_model)
+        logits  = head(ssm_out)                                    # (B, patches, 4)
 
         return logits, ssm_out
 
@@ -142,9 +156,9 @@ class SafeNetPipeline:
 
         model = SpatialSSM(
             d_input  = FUSED_DIM,
-            d_model  = SSM_D_MODEL,
-            d_state  = SSM_D_STATE,
-            n_layers = SSM_N_LAYERS,
+            d_model  = self.ssm_d_model,
+            d_state  = self.ssm_d_state,
+            n_layers = self.ssm_n_layers,
         ).to(DEVICE)
 
         batch      = 2
@@ -152,7 +166,7 @@ class SafeNetPipeline:
 
         B, T, P, D = fake_input.shape
         x   = fake_input.permute(0, 2, 1, 3).reshape(B * P, T, D)
-        out = model(x).reshape(B, P, SSM_D_MODEL)
+        out = model(x).reshape(B, P, self.ssm_d_model)
 
         print(f"  Input  shape : {fake_input.shape}")
         print(f"  Output shape : {out.shape}  <- (batch, patches, d_model)")
@@ -188,20 +202,32 @@ class SafeNetPipeline:
                      list(head.parameters()))
         optimizer = torch.optim.Adam(params, lr=self.learning_rate)
         weights   = self.class_weights.to(DEVICE) if self.class_weights is not None else None
-        criterion = FocalLoss(alpha=weights, gamma=2.0)
+        criterion = FocalLoss(alpha=weights, gamma=self.focal_gamma)
+
+        if self.wandb_run is not None:
+            self.wandb_run.watch(
+                [embedder, spatial_ssm, head],
+                log="all",
+                log_freq=self.wandb_log_freq,
+            )
 
         print("\n" + "=" * 60)
         print(f"Step 4: Training for {self.num_epochs} epochs...")
         print("=" * 60)
-        train_start = time.time()
+        train_start  = time.time()
+        global_step  = 0
+        best_test_f1 = 0.0
 
         for epoch in range(self.num_epochs):
             embedder.train()
             spatial_ssm.train()
             head.train()
 
-            epoch_loss = 0.0
-            for inputs, labels in train_loader:
+            epoch_loss    = 0.0
+            epoch_correct = 0
+            epoch_total   = 0
+
+            for batch_idx, (inputs, labels) in enumerate(train_loader):
                 labels = labels.to(DEVICE)
 
                 optimizer.zero_grad()
@@ -212,65 +238,146 @@ class SafeNetPipeline:
                 )
                 loss.backward()
                 optimizer.step()
-                epoch_loss += loss.item()
 
-            print(f"  Epoch {epoch+1}/{self.num_epochs}  loss: {epoch_loss/len(train_loader):.4f}")
+                preds          = logits.argmax(dim=-1).reshape(-1)
+                flat_labels    = labels.reshape(-1)
+                batch_correct  = (preds == flat_labels).sum().item()
+                batch_total    = flat_labels.numel()
+
+                epoch_loss    += loss.item()
+                epoch_correct += batch_correct
+                epoch_total   += batch_total
+                global_step   += 1
+
+                if self.wandb_run is not None and global_step % self.wandb_log_freq == 0:
+                    self.wandb_run.log(
+                        {
+                            "train/batch_loss":  loss.item(),
+                            "train/batch_error": 1.0 - batch_correct / batch_total,
+                            "train/lr":          optimizer.param_groups[0]["lr"],
+                        },
+                        step=global_step,
+                    )
+
+            avg_loss      = epoch_loss / len(train_loader)
+            train_acc     = epoch_correct / epoch_total
+            print(f"  Epoch {epoch+1}/{self.num_epochs}  loss: {avg_loss:.4f}  acc: {train_acc:.4f}")
+
+            # ── Per-epoch evaluation ──────────────────────────────
+            test_metrics = self._evaluate_split(embedder, spatial_ssm, head, test_loader)
+
+            print(
+                f"    Test  loss: {test_metrics['loss']:.4f}  "
+                f"acc: {test_metrics['accuracy']:.4f}  "
+                f"macro-F1: {test_metrics['f1_macro']:.4f}"
+            )
+
+            if self.wandb_run is not None:
+                log_payload = {
+                    "train/epoch_loss":     avg_loss,
+                    "train/accuracy":       train_acc,
+                    "train/error":          1.0 - train_acc,
+                    "test/loss":            test_metrics["loss"],
+                    "test/accuracy":        test_metrics["accuracy"],
+                    "test/error":           test_metrics["error"],
+                    "test/macro_f1":        test_metrics["f1_macro"],
+                    "test/weighted_f1":     test_metrics["f1_weighted"],
+                    "best/test_macro_f1":   best_test_f1,
+                    "epoch":                epoch + 1,
+                    "elapsed_time_sec":     time.time() - train_start, 
+                }
+                # Per-class metrics
+                for i, name in enumerate(CLASS_NAMES):
+                    log_payload[f"test/f1_{name}"]        = test_metrics["per_f1"][i]
+                    log_payload[f"test/precision_{name}"]  = test_metrics["per_prec"][i]   
+                    log_payload[f"test/recall_{name}"]     = test_metrics["per_rec"][i]
+                    log_payload[f"test/support_{name}"]    = test_metrics["per_support"][i]
+
+                self.wandb_run.log(log_payload, step=global_step)
+
+            if test_metrics["f1_macro"] > best_test_f1:
+                best_test_f1 = test_metrics["f1_macro"]
+                torch.save({
+                    "embedder":    embedder.state_dict(),
+                    "spatial_ssm": spatial_ssm.state_dict(),
+                    "head":        head.state_dict(),
+                }, self.checkpoint_path)
+                print(f"    *** New best checkpoint saved (F1: {best_test_f1:.4f}) → {self.checkpoint_path} ***")
+                if self.wandb_run is not None:
+                    self.wandb_run.summary["best_test_macro_f1"] = best_test_f1
+                    self.wandb_run.save(str(self.checkpoint_path))
 
         training_time = time.time() - train_start
         print(f"\n  Training time: {training_time:.1f}s")
 
         print("\n" + "=" * 60)
-        print("Step 5: Saving checkpoint...")
-        print("=" * 60)
-        torch.save({
-            "embedder":    embedder.state_dict(),
-            "spatial_ssm": spatial_ssm.state_dict(),
-            "head":        head.state_dict(),
-        }, self.checkpoint_path)
-        print(f"  Saved -> {self.checkpoint_path}")
-
-        print("\n" + "=" * 60)
-        print("Step 6: Evaluating on test set...")
+        print("Final metrics on test set:")
         print("=" * 60)
         self.evaluate(embedder, spatial_ssm, head, test_loader)
 
-    def evaluate(self, embedder, spatial_ssm, head, test_loader):
-        """Compute and print all metrics on the test set."""
+    def _evaluate_split(self, embedder, spatial_ssm, head, loader) -> dict:
+        """Run inference on *loader* and return a metrics dict."""
         embedder.eval()
         spatial_ssm.eval()
         head.eval()
 
         all_preds  = []
         all_labels = []
+        total_loss = 0.0
 
-        infer_start = time.time()
+        weights   = self.class_weights.to(DEVICE) if self.class_weights is not None else None
+        criterion = FocalLoss(alpha=weights, gamma=self.focal_gamma)
+
         with torch.no_grad():
-            for inputs, labels in test_loader:
-                logits, _ = self._forward(embedder, spatial_ssm, head, inputs)
+            for inputs, labels in loader:
+                labels_dev = labels.to(DEVICE)
+                logits, _  = self._forward(embedder, spatial_ssm, head, inputs)
+                loss = criterion(
+                    logits.reshape(-1, NUM_CLASSES),
+                    labels_dev.reshape(-1),
+                )
+                total_loss += loss.item()
                 preds = logits.argmax(dim=-1)
                 all_preds.append(preds.cpu().reshape(-1))
                 all_labels.append(labels.reshape(-1))
-        infer_time = time.time() - infer_start
 
         all_preds  = torch.cat(all_preds).numpy()
         all_labels = torch.cat(all_labels).numpy()
 
-        acc         = accuracy_score(all_labels, all_preds)
-        f1_macro    = f1_score(all_labels, all_preds, average='macro',    zero_division=0)
-        f1_weighted = f1_score(all_labels, all_preds, average='weighted', zero_division=0)
-        per_precision, per_recall, per_f1, _ = precision_recall_fscore_support(
+        per_prec, per_rec, per_f1, per_support = precision_recall_fscore_support(
             all_labels, all_preds, labels=list(range(NUM_CLASSES)), zero_division=0
         )
+        accuracy = accuracy_score(all_labels, all_preds)
 
-        print(f"  Accuracy         : {acc:.4f}")
-        print(f"  Macro F1         : {f1_macro:.4f}")
-        print(f"  Weighted F1      : {f1_weighted:.4f}")
-        print(f"  Inference time   : {infer_time:.2f}s")
+        return {
+            "loss":        total_loss / len(loader),
+            "accuracy":    accuracy,
+            "error":       1.0 - accuracy,
+            "f1_macro":    f1_score(all_labels, all_preds, average="macro",    zero_division=0),
+            "f1_weighted": f1_score(all_labels, all_preds, average="weighted", zero_division=0),
+            "per_f1":      per_f1,
+            "per_prec":    per_prec,       
+            "per_rec":     per_rec,        
+            "per_support": per_support,    
+        }
+    
+    def evaluate(self, embedder, spatial_ssm, head, test_loader):
+        metrics = self._evaluate_split(embedder, spatial_ssm, head, test_loader)
+
+        print(f"  Accuracy         : {metrics['accuracy']:.4f}")
+        print(f"  Macro F1         : {metrics['f1_macro']:.4f}")
+        print(f"  Weighted F1      : {metrics['f1_weighted']:.4f}")
         print()
         print("  Per-class breakdown:")
-        print(f"  {'Class':8s}  {'Precision':>10s}  {'Recall':>8s}  {'F1':>8s}")
+        print(f"  {'Class':8s}  {'Prec':>8s}  {'Rec':>8s}  {'F1':>8s}  {'Support':>8s}")
         for i, name in enumerate(CLASS_NAMES):
-            print(f"  {name:8s}  {per_precision[i]:>10.4f}  {per_recall[i]:>8.4f}  {per_f1[i]:>8.4f}")
+            print(
+                f"  {name:8s}  "
+                f"{metrics['per_prec'][i]:>8.4f}  "
+                f"{metrics['per_rec'][i]:>8.4f}  "
+                f"{metrics['per_f1'][i]:>8.4f}  "
+                f"{metrics['per_support'][i]:>8d}"
+            )
 
     def run(self):
         """
@@ -316,7 +423,7 @@ class SafeNetPipeline:
                 "labels":   test_labels.numpy(),
             },
             "config": {
-                "d_model":     SSM_D_MODEL,
+                "d_model":     self.ssm_d_model,
                 "num_patches": self.num_patches,
                 "num_classes": NUM_CLASSES,
             },
@@ -326,4 +433,4 @@ class SafeNetPipeline:
             pickle.dump(output, f)
 
         print(f"\n  Saved -> {self.ssm1_output_pickle}")
-        print("Done. SSM outputs ready for MLP fusion.")
+        print("Done.")

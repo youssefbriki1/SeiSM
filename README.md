@@ -60,10 +60,10 @@ This script will:
 After preprocessing, run the SSM pipeline to generate embeddings:
 
 ```bash
-python src/ssm1_pipeline.py
+python -m src.safenet_branch.safenet_pipeline_ceed
 ```
 
-This processes the preprocessed CEED data through SafeNet embeddings and SpatialSSM to produce `data/ssm1_output.pickle`.
+This processes the preprocessed CEED data through SafeNet embeddings and SpatialSSM to produce `data/california/ssm1_output.pickle`.
 
 For full model training, use the available training scripts:
 

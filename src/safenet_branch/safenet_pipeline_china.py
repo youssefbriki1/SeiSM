@@ -135,7 +135,7 @@ def main() -> None:
 
         pipeline.smoke_test()
         pipeline.train(skip_preprocessing=args.skip_preprocessing)
-        # pipeline.run()
+        pipeline.run()
 
     finally:
         if wandb_run is not None:

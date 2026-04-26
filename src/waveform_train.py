@@ -1,8 +1,11 @@
 import argparse
 import os
 import glob
+import json
+import random
 from pathlib import Path
 import time
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, ConcatDataset
@@ -26,9 +29,6 @@ DEFAULT_ARROW_PATHS = [
 DEFAULT_CSV_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv"
 DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_quake_mamba2_waveform.pth"
 
-# ==========================================
-# 1. ARROW WAVEFORM DATASET (Single Directory)
-# ==========================================
 class ArrowSeismicDataset(torch.utils.data.Dataset):
     def __init__(self, arrow_dir_path: str, csv_path: str):
         if arrow_dir_path.endswith('.arrow'):
@@ -146,16 +146,21 @@ def train(args):
     full_dataset = ConcatDataset(individual_datasets)
     print(f"Total Combined Dataset Size: {len(full_dataset)}")
     
-    train_size = int(0.6 * len(full_dataset))
-    val_size = int(0.2 * len(full_dataset))
-    test_size = len(full_dataset) - train_size - val_size
-    train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(args.seed)
     )
+    print(f"Split: {train_size} train / {val_size} val (seed={args.seed})")
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True, drop_last=True)
     
     # --- Model, Loss, Optimizer ---
     if args.model_type == "mamba2":
@@ -175,8 +180,15 @@ def train(args):
     
     print(f"Model Parameters: {sum(p.numel() for p in model.parameters()):,}")
     print("Training model...")
+    
+    if args.loss == "mse":
+        criterion = nn.MSELoss()
+    elif args.loss == "l1":
+        criterion = nn.L1Loss()
+    else:
+        warnings.warn(f"Unknown loss type: {args.loss}. Defaulting to MSELoss.")
+        criterion = nn.MSELoss()
 
-    criterion = nn.L1Loss()
     
     
     optimizers = []
@@ -254,9 +266,10 @@ def train(args):
         save_path = resolve_path(args.save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    best_val_mae = float('inf') 
+    best_val_mae = float('inf')
     global_step = 0
     global_start_time = time.time()
+    epoch_history = []
 
     # --- Training Epochs ---
     try:
@@ -325,6 +338,16 @@ def train(args):
                     "epoch": epoch + 1,
                 }, step=global_step)
             
+            epoch_history.append({
+                "epoch": epoch + 1,
+                "train_loss": avg_train_loss,
+                "val_loss": val_metrics["loss"],
+                "val_mae": val_metrics["mae"],
+                "val_mse": val_metrics["mse"],
+                "val_r2": val_metrics["r2"],
+                "epoch_time_seconds": epoch_time,
+            })
+
             if val_metrics['mae'] < best_val_mae:
                 best_val_mae = val_metrics['mae']
                 torch.save(model.state_dict(), save_path)
@@ -334,32 +357,27 @@ def train(args):
 
         global_time = time.time() - global_start_time
         print(f"Training Complete! Total time: {global_time:.2f} seconds ({global_time/60:.2f} minutes / {global_time/3600:.2f} hours).")
-        
-        # --- Final Evaluation on Test Set ---
-        print("\nEvaluating best model on Test Set...")
-        try:
-            model.load_state_dict(torch.load(save_path))
-        except FileNotFoundError:
-            print(f"Warning: Could not find saved model at {save_path}, evaluating final model state instead.")
-            
-        test_metrics = evaluate_split(
-            model=model,
-            dataloader=test_loader,
-            criterion=criterion,
-            device=device,
-            desc="Testing",
+
+        peak_gpu_memory_mb = (
+            torch.cuda.max_memory_allocated(device) / 1024**2
+            if torch.cuda.is_available() else 0.0
         )
-        print(
-            f"*** Final Test Results ***\n"
-            f"Test MAE: {test_metrics['mae']:.4f} | Test MSE: {test_metrics['mse']:.4f} | Test R2: {test_metrics['r2']:.4f}\n"
-        )
-        
-        if wandb is not None:
-            wandb.log({
-                "test/mae_loss": test_metrics["mae"],
-                "test/mse_loss": test_metrics["mse"],
-                "test/r2_score": test_metrics["r2"],
-            })
+
+        # --- JSON Results Logging ---
+        results = {
+            "seed": args.seed,
+            "model_type": args.model_type,
+            "config": vars(args),
+            "best_val_mae": best_val_mae,
+            "peak_gpu_memory_mb": peak_gpu_memory_mb,
+            "total_time_seconds": global_time,
+            "epochs": epoch_history,
+        }
+        json_path = Path(args.json_log_path.format(seed=args.seed, run_name=args.wandb_run_name, model=args.model_type))
+        json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(json_path, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"Results saved to {json_path}")
 
     finally:
         if wandb is not None:
@@ -377,7 +395,7 @@ if __name__ == "__main__":
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "muon"], help="Optimizer type")
     parser.add_argument("--lr_scheduler", type=str, default="cosine", choices=["cosine", "step", "none"], help="Learning rate scheduler type")
     parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs for learning rate scheduler")
-    parser.add_argument("--loss", type=str, default="l1", choices=["l1", "mse"], help="Loss function to use") # TODO: Update Losses here
+    parser.add_argument("--loss", type=str, default="mse", choices=["l1", "mse"], help="Loss function to use") # TODO: Update Losses here
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     
     
@@ -406,6 +424,7 @@ if __name__ == "__main__":
 
     # Output arguments
     parser.add_argument("--save_path", type=str, default=str(DEFAULT_SAVE_PATH), help="Path to save the best model weights")
+    parser.add_argument("--json_log_path", type=str, default=str(PROJECT_ROOT / "results" / "{model}_seed{seed}.json"), help="Path template for JSON results (supports {seed}, {run_name}, {model})")
     parser.add_argument("--disable_wandb", action="store_true", help="Disable Weights & Biases logging")
     parser.add_argument("--wandb_project", type=str, default="quake-wave-mamba2", help="W&B project name")
     parser.add_argument("--wandb_entity", type=str, default="", help="W&B entity/team")

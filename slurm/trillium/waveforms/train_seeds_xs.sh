@@ -55,6 +55,7 @@ python $MAIN_PY \
     --optimizer adamw \
     --seed $SEED \
     --wandb_entity ift3710-ai-slop \
+    --loss binned_mse \
     --wandb_project quake-wave-mamba2 \
     --wandb_run_name $RUN_NAME \
     --save_path $SAVE_PATH \

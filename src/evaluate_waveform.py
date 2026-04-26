@@ -81,11 +81,11 @@ def parse_args():
     parser.add_argument("--arrow_paths", nargs='+', 
                         default=[
                             "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
-                            "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
+                            #"/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
                         ],
                         help="Paths to huggingface arrow file directories")
     parser.add_argument("--csv_path", type=str, 
-                        default="/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv",
+                        default="/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test.csv",
                         help="Path to CSV containing event magnitudes")
     
     # Checkpoint paths

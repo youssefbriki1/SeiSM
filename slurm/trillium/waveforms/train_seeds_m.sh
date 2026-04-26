@@ -60,5 +60,6 @@ python $MAIN_PY \
     --save_path $SAVE_PATH \
     --json_log_path "$JSON_PATH" \
     --epochs 30 \
+    --loss binned_mse \
     --wandb_mode offline \
     $SIZE_ARGS

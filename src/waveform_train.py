@@ -16,7 +16,7 @@ from datasets import load_dataset
 import torch.optim.lr_scheduler as lr_scheduler
 from models import QuakeWaveMamba2, BiWaveformLSTM, WaveformTransformer
 import warnings
-from utils import Muon
+from utils import Muon, BinnedWeightedMSELoss
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -185,6 +185,10 @@ def train(args):
         criterion = nn.MSELoss()
     elif args.loss == "l1":
         criterion = nn.L1Loss()
+    elif args.loss == "binned_mse":
+        bin_edges = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0])
+        bin_counts = [16690, 29767, 8355, 1491, 183, 24]
+        criterion = BinnedWeightedMSELoss(bin_edges=bin_edges, bin_counts=bin_counts)
     else:
         warnings.warn(f"Unknown loss type: {args.loss}. Defaulting to MSELoss.")
         criterion = nn.MSELoss()
@@ -395,7 +399,7 @@ if __name__ == "__main__":
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["adamw", "muon"], help="Optimizer type")
     parser.add_argument("--lr_scheduler", type=str, default="cosine", choices=["cosine", "step", "none"], help="Learning rate scheduler type")
     parser.add_argument("--warmup_epochs", type=int, default=0, help="Number of warmup epochs for learning rate scheduler")
-    parser.add_argument("--loss", type=str, default="mse", choices=["l1", "mse"], help="Loss function to use") # TODO: Update Losses here
+    parser.add_argument("--loss", type=str, default="mse", choices=["l1", "mse", "binned_mse"], help="Loss function to use") # TODO: Update Losses here
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     
     

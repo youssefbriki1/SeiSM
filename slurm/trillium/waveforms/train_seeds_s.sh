@@ -59,6 +59,7 @@ python $MAIN_PY \
     --wandb_project quake-wave-mamba2 \
     --wandb_run_name $RUN_NAME \
     --save_path $SAVE_PATH \
+    --loss binned_mse \
     --json_log_path "$JSON_PATH" \
     --epochs 30 \
     --wandb_mode offline \

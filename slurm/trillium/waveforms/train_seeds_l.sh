@@ -59,6 +59,7 @@ python $MAIN_PY \
     --wandb_run_name $RUN_NAME \
     --save_path $SAVE_PATH \
     --json_log_path "$JSON_PATH" \
+    --loss binned_mse \
     --epochs 30 \
     --wandb_mode offline \
     $SIZE_ARGS

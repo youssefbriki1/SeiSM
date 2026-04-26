@@ -95,7 +95,6 @@ def parse_args():
     parser.add_argument("--transformer_checkpoint", type=str,
                         default="/scratch/brikiyou/ift3710/checkpoints/waveforms/best_transformer_adamw_waveform.pth",
                         help="Path to the Transformer model checkpoint")
-    
     # General Data Loading
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--num_workers", type=int, default=4)
@@ -139,12 +138,12 @@ def evaluate():
     models_config = {
         "Mamba2 (SSM)": {
             "checkpoint": args.mamba_checkpoint,
-            "model": QuakeWaveMamba2(in_channels=3, d_model=128, d_state=64, n_layers=4, headdim=32),
+            "model": QuakeWaveMamba2(in_channels=3, d_model=256, d_state=64, n_layers=8, headdim=64),
             "color": "#ff7f0e" # Orange
         },
         "Transformer": {
             "checkpoint": args.transformer_checkpoint,
-            "model": WaveformTransformer(in_channels=3, d_model=128, nhead=8, num_layers=4, dim_feedforward=512, dropout=0.2, output_size=1),
+            "model": WaveformTransformer(in_channels=3, d_model=256, nhead=16, num_layers=8, dim_feedforward=1024, dropout=0.2, output_size=1),
             "color": "#2ca02c" # Green
         }
     }

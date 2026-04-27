@@ -66,3 +66,7 @@ class QuakeWaveMamba2(nn.Module):
         magnitude = self.regressor(pooled) # (Batch, 1)
         
         return magnitude
+
+if __name__ == "__main__":  
+    model = QuakeWaveMamba2()
+    print(model)

@@ -24,9 +24,9 @@ SRC_ROOT = Path(__file__).resolve().parent
 
 DEFAULT_ARROW_PATHS = [
     "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
-    "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
+    #"/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
 ]
-DEFAULT_CSV_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv"
+DEFAULT_CSV_PATH = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test.csv"
 DEFAULT_SAVE_PATH = PROJECT_ROOT / "checkpoints" / "best_quake_mamba2_waveform.pth"
 
 class ArrowSeismicDataset(torch.utils.data.Dataset):
@@ -120,9 +120,9 @@ def evaluate_split(model, dataloader, criterion, device, desc: str):
 
     return {
         "loss": avg_loss,
-        "mae": mae,
-        "mse": mse,
-        "r2": r2,
+        "mae": float(mae),
+        "mse": float(mse),
+        "r2": float(r2),
     }
 
 # ==========================================
@@ -193,6 +193,7 @@ def train(args):
         warnings.warn(f"Unknown loss type: {args.loss}. Defaulting to MSELoss.")
         criterion = nn.MSELoss()
 
+    criterion.to(device)
     
     
     optimizers = []
@@ -372,7 +373,7 @@ def train(args):
             "seed": args.seed,
             "model_type": args.model_type,
             "config": vars(args),
-            "best_val_mae": best_val_mae,
+            "best_val_mae": float(best_val_mae),
             "peak_gpu_memory_mb": peak_gpu_memory_mb,
             "total_time_seconds": global_time,
             "epochs": epoch_history,

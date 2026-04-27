@@ -56,9 +56,9 @@ def main():
     # 1. Dataset setup
     arrow_paths = [
         "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/c062e7b0694b5aba3f4b3b624a764e52ecffbf5260ebfc550e1256de763c6e03",
-        "/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
+        #"/scratch/brikiyou/ift3710/data/ceed_waveforms/AI4EPS___ceed/station_test/1.1.0/augmented_data"
     ]
-    csv_path = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test_augmented.csv"
+    csv_path = "/scratch/brikiyou/ift3710/data/ceed_waveforms/events_test.csv"
     
     individual_datasets = []
     for path in arrow_paths:
@@ -86,13 +86,13 @@ def main():
     models_config = {
         "Mamba2 (SSM)": {
             "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/waveforms/best_mamba2_adamw_waveform.pth",
-            "model": QuakeWaveMamba2(in_channels=3, d_model=128, d_state=64, n_layers=4, headdim=32),
+            "model": QuakeWaveMamba2(in_channels=3, d_model=256, d_state=64, n_layers=8, headdim=64),
             "color": "#ff7f0e", # Orange
             "time": 1038.62
         },
         "Transformer": {
             "checkpoint": "/scratch/brikiyou/ift3710/checkpoints/waveforms/best_transformer_adamw_waveform.pth",
-            "model": WaveformTransformer(in_channels=3, d_model=128, nhead=8, num_layers=4, dim_feedforward=512, dropout=0.2, output_size=1),
+            "model": WaveformTransformer(in_channels=3, d_model=256, nhead=16, num_layers=8, dim_feedforward=1024, dropout=0.2, output_size=1),
             "color": "#2ca02c", # Green
             "time": 1832.67
         }

@@ -19,7 +19,7 @@ dependencies = [
     "huggingface_hub",
     "geopandas",
     "pillow",
-    "pyproj",
+    "pyproj>=3.6",
     "rasterio",
     "shapely",
     "h5py",
@@ -28,6 +28,8 @@ dependencies = [
     "tensorboard",
     "wandb",
     "tqdm",
+    "ipykernel>=7.2.0",
+    "jupyter>=1.1.1",
 ]
 
 [tool.uv]

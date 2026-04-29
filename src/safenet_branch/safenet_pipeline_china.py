@@ -1,27 +1,29 @@
 """
-china/run.py — SafeNet pipeline runner for the China dataset.
+safenet_pipeline_china.py — SafeNet pipeline runner for the China dataset.
 
 Usage:
     # Skip preprocessing (default), log to W&B
-    python china/run.py
+    python safenet_pipeline_china.py
 
     # Run preprocessing first, then train
-    python china/run.py -s
+    python safenet_pipeline_china.py -s
 
     # Tune hyperparams from the CLI
-    python china/run.py --epochs 30 --lr 3e-4 --focal-gamma 1.5
+    python safenet_pipeline_china.py --epochs 30 --lr 3e-4 --focal-gamma 1.5
 
     # Offline / dry-run (no W&B upload)
-    python china/run.py --wandb-mode offline
+    python safenet_pipeline_china.py --wandb-mode offline
 
     # Disable W&B entirely
-    python china/run.py --disable-wandb
+    python safenet_pipeline_china.py --disable-wandb
 """
 
 import argparse
 import sys
 import time
 from pathlib import Path
+
+from pyproj.__main__ import parser
 
 # ── Path setup ───────────────────────────────────────────────────────────────
 SRC_ROOT   = Path(__file__).resolve().parent.parent  # repo root / src
@@ -47,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="Skip the bash preprocessing step (default: True — pass -s to run it).",
     )
+
+    # Run params
+    parser.add_argument("--training-pickle", type=str, default="training_output.pickle", help="Preprocessed training data file.")
+    parser.add_argument("--testing-pickle",  type=str, default="testing_output.pickle",  help="Preprocessed testing data file.")
+    parser.add_argument("--training-labels", type=str, default="training_labels.csv", help="CSV file with training labels.")
+    parser.add_argument("--testing-labels",  type=str, default="testing_labels.csv",  help="CSV file with testing labels.")
 
     # Training hyperparams
     parser.add_argument("--epochs",      type=int,   default=20,   help="Number of training epochs.")
@@ -121,6 +129,10 @@ def main() -> None:
         pipeline = SafeNetPipeline(
             data_dir             = DATA_DIR,
             preprocessing_script = SCRIPT_DIR / "run_preprocessing.sh",
+            training_pickle      = args.training_pickle,
+            testing_pickle       = args.testing_pickle,
+            training_labels      = args.training_labels,
+            testing_labels       = args.testing_labels,
             num_patches          = cfg.num_patches,
             num_epochs           = cfg.num_epochs,
             learning_rate        = cfg.learning_rate,

@@ -80,6 +80,7 @@ python src/main_mutimodal.py
 - **QuakeMamba2**: Enhanced SSM architecture
 - **SafeNetFull**: Reproduction of the SafeNet paper's model
 - **Baselines**: LSTM, ResNet implementations
+```
 
 ## Evaluation
 

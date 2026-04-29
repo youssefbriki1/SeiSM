@@ -71,18 +71,15 @@ For full model training, use the available training scripts:
 # Multimodal training (SafeNet + spatial features)
 python src/main_mutimodal.py
 
-# Baseline models (LSTM, etc.)
-python src/baseline_train.py --model lstm
-
 ### Model Options
-- **SpatialSSM**: Mamba-based model for spatial feature sequences
+- **SeiSM**: Mamba-based model for spatial feature sequences
 - **QuakeMamba2**: Enhanced SSM architecture
-- **SafeNetFull**: Multimodal model combining SafeNet features with spatial data
+- **SafeNetFull**: Reproduction of the SafeNet paper's model
 - **Baselines**: LSTM, ResNet implementations
 
 ## Evaluation
 
-Models are evaluated using F1-score, precision, and recall metrics with focal loss. Training supports Weights & Biases logging.
+Models are evaluated using weighed F1-score, precision, and recall metrics with focal loss. Training supports Weights & Biases logging.
 
 ## Directory Structure
 
@@ -95,6 +92,16 @@ Models are evaluated using F1-score, precision, and recall metrics with focal lo
 ├── slurm/                             # HPC training scripts
 └── tests/                             # Unit tests
 ```
+
+## Demonstration
+
+The repository includes a `SeiSM_playground.ipynb` Jupyter Notebook, which serves as an interactive demonstration of the various components of our architecture using a mini dataset. It provides a step-by-step walkthrough of:
+
+1. **Data Processing & Feature Engineering:** 
+- Processing raw earthquake catalog data and extracting relevant temporal/spatial features 
+- Geological maps rendering
+2. **Model Evaluation:** Running inference and evaluation metrics on pretrained models using provided model weights (located at `checkpoints/ssm_spatial.pth`).
+3. **Pipeline Showcase:** A short, end-to-end demonstration of the full multimodal pipeline from data ingestion to prediction.
 
 ## Contributing
 

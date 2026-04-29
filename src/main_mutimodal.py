@@ -9,7 +9,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.safenet_embeddings import SafeNetFull, SeiSM
+from models.safenet_embeddings import SafeNetFull, SeiSM, SeiSM_ST
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent
@@ -331,6 +331,21 @@ def train(args):
         ).to(device)
         print(f"[Model] SeiSM — embed_dim={args.embed_dim}, d_model={args.d_model}, "
               f"d_state={args.d_state}, n_ssm_layers={args.n_ssm_layers}")
+    elif args.model == "SeiSM_ST":
+        model = SeiSM_ST(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=args.embed_dim,
+            num_patches=num_patches,
+            d_model=args.d_model,
+            d_state=args.d_state,
+            n_temporal_layers=args.n_temporal_layers,
+            n_spatial_layers=args.n_spatial_layers,
+        ).to(device)
+        print(f"[Model] SeiSM_ST — embed_dim={args.embed_dim}, d_model={args.d_model}, "
+              f"d_state={args.d_state}, n_temporal_layers={args.n_temporal_layers}, "
+              f"n_spatial_layers={args.n_spatial_layers}")
     else:
         model = SafeNetFull(
             num_classes=num_classes,
@@ -585,7 +600,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train SafeNet multimodal models for Earthquake Forecasting")
 
     # Model selection
-    parser.add_argument("--model", type=str, default="SeiSM", choices=["safenet_full", "SeiSM"], help="Model architecture to train")
+    parser.add_argument("--model", type=str, default="SeiSM", choices=["safenet_full", "SeiSM", "SeiSM_ST"], help="Model architecture to train")
 
     # Data arguments
     parser.add_argument(
@@ -628,7 +643,9 @@ if __name__ == "__main__":
     # SeiSM architecture hyperparameters
     parser.add_argument("--d_model", type=int, default=128, help="Mamba SSM hidden dimension")
     parser.add_argument("--d_state", type=int, default=16, help="Mamba SSM state expansion factor")
-    parser.add_argument("--n_ssm_layers", type=int, default=2, help="Number of stacked Mamba layers")
+    parser.add_argument("--n_ssm_layers", type=int, default=2, help="Number of stacked Mamba layers (SeiSM only)")
+    parser.add_argument("--n_temporal_layers", type=int, default=2, help="Number of temporal Mamba layers (SeiSM_ST only)")
+    parser.add_argument("--n_spatial_layers", type=int, default=2, help="Number of spatial Mamba layers (SeiSM_ST only)")
     
     # Model/Loss configuration
     parser.add_argument("--use_focal_loss", action="store_true", help="Flag to use Focal Loss instead of CrossEntropy")

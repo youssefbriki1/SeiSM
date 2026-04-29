@@ -354,7 +354,6 @@ class SeiSM(SafeNetEmbeddings):
         self.proj_in = nn.Linear(input_dim, d_model)
         
         if use_minimal:
-            # Create a dummy ModelArgs (n_layer and vocab_size aren't used by MambaBlock)
             args = ModelArgs(d_model=d_model, d_state=d_state, d_conv=4, expand=2, n_layer=1, vocab_size=1)
             self.ssm_layers = nn.ModuleList([
                 MambaBlock(args) for _ in range(n_ssm_layers)
@@ -393,3 +392,135 @@ class SeiSM(SafeNetEmbeddings):
         # --- Classify ---
         logits = self.head(z)                                   # (B, P*num_classes)
         return logits.reshape(B, P, self._num_classes)          # (B, P, num_classes)
+
+
+# ---------------------------------------------------------------------------
+# SeiSM_ST: Spatio-Temporal dual-Mamba variant
+# ---------------------------------------------------------------------------
+
+class SeiSM_ST(SafeNetEmbeddings):
+    """Two-stage Mamba SSM: Temporal → Spatial.
+
+    Stage 1 (Temporal): Each patch's 10-year history is processed
+        independently by a Mamba SSM, producing a time-aware embedding
+        per patch.
+    Stage 2 (Spatial): The patch embeddings interact with each other
+        through a second Mamba SSM, allowing the model to learn
+        geographical relationships (stress transfer, fault connectivity).
+
+    This mirrors the SafeNetFull architecture (LSTM → ViT) but replaces
+    both modules with Mamba blocks.
+    """
+
+    def __init__(
+        self,
+        num_classes=4,
+        map_channels=5,
+        catalog_features=282,
+        embed_dim=32,
+        num_patches=64,
+        d_model=128,
+        d_state=16,
+        n_temporal_layers=2,
+        n_spatial_layers=2,
+    ):
+        try:
+            from mamba_ssm import Mamba
+            use_minimal = False
+        except ImportError:
+            print("Warning: mamba_ssm not found. Using mamba_minimal fallback.")
+            from .mamba_minimal import MambaBlock, ModelArgs
+            use_minimal = True
+
+        super().__init__(
+            num_classes=num_classes,
+            map_channels=map_channels,
+            catalog_features=catalog_features,
+            embed_dim=embed_dim,
+            num_patches=num_patches,
+        )
+        fused_dim = embed_dim * 2  # 64
+
+        self.regional_norm = nn.LayerNorm(fused_dim)
+        self.global_norm = nn.LayerNorm(embed_dim)
+
+        # --- Stage 1: Temporal Mamba (per-patch) ---
+        self.temporal_proj = nn.Linear(fused_dim, d_model)
+        self.global_proj = nn.Linear(embed_dim, d_model)
+
+        if use_minimal:
+            args = ModelArgs(d_model=d_model, d_state=d_state, d_conv=4, expand=2, n_layer=1, vocab_size=1)
+            self.temporal_ssm = nn.ModuleList([
+                MambaBlock(args) for _ in range(n_temporal_layers)
+            ])
+            self.global_ssm = nn.ModuleList([
+                MambaBlock(ModelArgs(d_model=d_model, d_state=d_state, d_conv=4, expand=2, n_layer=1, vocab_size=1))
+                for _ in range(n_temporal_layers)
+            ])
+            self.spatial_ssm = nn.ModuleList([
+                MambaBlock(ModelArgs(d_model=d_model, d_state=d_state, d_conv=4, expand=2, n_layer=1, vocab_size=1))
+                for _ in range(n_spatial_layers)
+            ])
+        else:
+            self.temporal_ssm = nn.ModuleList([
+                Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
+                for _ in range(n_temporal_layers)
+            ])
+            self.global_ssm = nn.ModuleList([
+                Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
+                for _ in range(n_temporal_layers)
+            ])
+            self.spatial_ssm = nn.ModuleList([
+                Mamba(d_model=d_model, d_state=d_state, d_conv=4, expand=2)
+                for _ in range(n_spatial_layers)
+            ])
+
+        self.temporal_norm = nn.LayerNorm(d_model)
+        self.spatial_norm = nn.LayerNorm(d_model)
+
+        # --- Stage 2 head: per-patch classification ---
+        self._num_classes = num_classes
+        self.head = nn.Linear(d_model, num_classes)
+
+    def forward(self, inputs):
+        z, z_g = self._encode(inputs)   # z: (B,T,P,64), z_g: (B,T,32)
+        B, T, P, D = z.shape
+
+        # --- Norm ---
+        z = self.regional_norm(z)       # (B, T, P, 64)
+        z_g = self.global_norm(z_g)     # (B, T, 32)
+
+        # =================================================================
+        # Stage 1: Temporal Mamba — each patch processes its own history
+        # =================================================================
+        # Regional patches: (B, T, P, 64) → (B*P, T, d_model)
+        x = z.permute(0, 2, 1, 3).reshape(B * P, T, D)     # (B*P, T, 64)
+        x = self.temporal_proj(x)                            # (B*P, T, d_model)
+        for layer in self.temporal_ssm:
+            x = x + layer(x)
+        x = self.temporal_norm(x)
+        x = x[:, -1, :]                                     # (B*P, d_model)
+        x = x.reshape(B, P, -1)                             # (B, P, d_model)
+
+        # Global token: (B, T, 32) → (B, 1, d_model)
+        g = self.global_proj(z_g)                            # (B, T, d_model)
+        for layer in self.global_ssm:
+            g = g + layer(g)
+        g = g[:, -1, :].unsqueeze(1)                         # (B, 1, d_model)
+
+        # Prepend global token to patch sequence
+        x = torch.cat([g, x], dim=1)                         # (B, P+1, d_model)
+
+        # =================================================================
+        # Stage 2: Spatial Mamba — patches interact with each other
+        # =================================================================
+        for layer in self.spatial_ssm:
+            x = x + layer(x)
+        x = self.spatial_norm(x)
+
+        # Drop the global token, keep only regional patches
+        x = x[:, 1:, :]                                     # (B, P, d_model)
+
+        # --- Per-patch classification ---
+        logits = self.head(x)                                # (B, P, num_classes)
+        return logits

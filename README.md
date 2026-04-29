@@ -6,6 +6,20 @@ This project implements state space models (SSMs) for earthquake forecasting, fo
 
 The pipeline processes the CEED earthquake catalog into spatial tensors representing geological features and seismicity patterns. These tensors are then used to train SSM-based models for earthquake prediction.
 
+### Directory Structure
+
+```
+├── src/
+│   ├── data-processing/california/    # CEED preprocessing
+│   ├── models/                        # Model implementations
+│   └── utils/                         # Datasets, losses, etc.
+├── data/                              # Raw and processed data
+├── checkpoints/                       # SeiSM model checkpoint
+├── slurm/                             # HPC training scripts
+└── tests/                             # Unit tests
+```
+
+
 ### Key Components
 - **Data Processing**: Converts CEED metadata and USGS geospatial data into 5-channel spatial tensors (lithology, faults, magnitude density)
 - **Models**: SSM implementations (Mamba-based) for sequence modeling of spatial-temporal earthquake data
@@ -22,10 +36,22 @@ The pipeline processes the CEED earthquake catalog into spatial tensors represen
 2. Install dependencies:
    ```bash
    uv sync
+   # if uv sync fails due to mamba-ssm (see explanation below), run:
+   uv pip install -r requirements.txt
    ```
 > **Warning: CUDA Requirement for Mamba Models**
 > `uv sync` will fail if you're installing dependencies on a machine without CUDA since the mamba-ssm modules require a CUDA-enabled GPU. In this case, simply install the base dependencies with `uv pip install -r requirements.txt`. The Jupyter notebook will automatically use a[pytorch implementation of mamba-ssm](./src/models/mamba_minimal.py) as a fallback.
 
+## Demonstration
+
+The repository includes a `SeiSM_playground.ipynb` [Jupyter Notebook](./SeiSM_playground.ipynb), which is an interactive demonstration of the various components of our architecture using a mini dataset. It provides a step-by-step walkthrough of:
+
+1. **Data Processing & Feature Engineering:** 
+Pre-processing raw data for the year 2010-2011 to create mini dataset, this include:
+- Feature-engineering raw earthquake catalogs
+- Rendering geological maps
+2. **Model Evaluation:** With the minidataset, running inference and evaluation metrics on pretrained models (model weights located at [checkpoints/ssm_spatial.pth](./checkpoints/ssm_spatial.pth)).
+3. **Pipeline Showcase:** A short, end-to-end demonstration of the full multimodal pipeline from data ingestion to prediction.
 
 
 ## Data Preprocessing
@@ -77,36 +103,14 @@ python src/main_mutimodal.py
 
 ### Model Options
 - **SeiSM**: Mamba-based model for spatial feature sequences
-- **QuakeMamba2**: Enhanced SSM architecture
 - **SafeNetFull**: Reproduction of the SafeNet paper's model
+- **QuakeMamba2**: Enhanced SSM architecture
 - **Baselines**: LSTM, ResNet implementations
 ```
 
 ## Evaluation
 
 Models are evaluated using weighed F1-score, precision, and recall metrics with focal loss. Training supports Weights & Biases logging.
-
-## Directory Structure
-
-```
-├── src/
-│   ├── data-processing/california/    # CEED preprocessing
-│   ├── models/                        # Model implementations
-│   └── utils/                         # Datasets, losses, etc.
-├── data/                              # Raw and processed data
-├── slurm/                             # HPC training scripts
-└── tests/                             # Unit tests
-```
-
-## Demonstration
-
-The repository includes a `SeiSM_playground.ipynb` Jupyter Notebook, which serves as an interactive demonstration of the various components of our architecture using a mini dataset. It provides a step-by-step walkthrough of:
-
-1. **Data Processing & Feature Engineering:** 
-- Processing raw earthquake catalog data and extracting relevant temporal/spatial features 
-- Geological maps rendering
-2. **Model Evaluation:** Running inference and evaluation metrics on pretrained models using provided model weights (located at `checkpoints/ssm_spatial.pth`).
-3. **Pipeline Showcase:** A short, end-to-end demonstration of the full multimodal pipeline from data ingestion to prediction.
 
 ## Contributing
 

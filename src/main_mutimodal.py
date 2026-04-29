@@ -9,7 +9,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 import pandas as pd
 from utils import FocalLoss, MultimodalSafeNetDataset
-from models.safenet_embeddings import SafeNetFull, SeiSM
+from models.spatial_models import SafeNetFull, SeiSM
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = Path(__file__).resolve().parent

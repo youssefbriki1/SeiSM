@@ -4,7 +4,6 @@ data
 slurm-*
 src/wandb
 .pycache/
-checkpoints/
 __pycache__/
 **/__pycache__/
 wandb/

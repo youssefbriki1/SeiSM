@@ -25,7 +25,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from models.safenet_embeddings import SeiSM
+from models.spatial_models import SeiSM
 from utils.dataset import MultimodalSafeNetDataset
 from utils.focal_loss import FocalLoss
 

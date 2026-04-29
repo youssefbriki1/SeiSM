@@ -91,7 +91,7 @@ class SafeNetPipeline:
         self.training_labels    = self.data_dir / training_labels
         self.testing_labels     = self.data_dir / testing_labels
         self.ssm1_output_pickle = self.data_dir / ssm1_output_pickle
-        self.checkpoint_path    = checkpoint_path
+        self.checkpoint_path    = self.data_dir / "checkpoint.pt"
 
     # ── Internal helpers ─────────────────────────────────────────────
 

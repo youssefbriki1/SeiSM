@@ -23,6 +23,10 @@ The pipeline processes the CEED earthquake catalog into spatial tensors represen
    ```bash
    uv sync
    ```
+> **Warning: CUDA Requirement for Mamba Models**
+> `uv sync` will fail if you're installing dependencies on a machine without CUDA since the mamba-ssm modules require a CUDA-enabled GPU. In this case, simply install the base dependencies with `uv pip install -r requirements.txt`. The Jupyter notebook will automatically use a[pytorch implementation of mamba-ssm](./src/models/mamba_minimal.py) as a fallback.
+
+
 
 ## Data Preprocessing
 

@@ -74,10 +74,6 @@ python src/main_mutimodal.py
 # Baseline models (LSTM, etc.)
 python src/baseline_train.py --model lstm
 
-# QuakeMamba2 model
-python src/main.py
-```
-
 ### Model Options
 - **SpatialSSM**: Mamba-based model for spatial feature sequences
 - **QuakeMamba2**: Enhanced SSM architecture

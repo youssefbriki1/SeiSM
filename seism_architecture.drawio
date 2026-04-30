@@ -25,7 +25,7 @@
         <mxCell id="sf" value="&lt;b&gt;Fusion des embeddings&lt;/b&gt;&lt;br&gt;Concaténation sur 64 regions&lt;br&gt;→ un seul token par pas de temps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;shadow=1;" vertex="1" parent="sp">
           <mxGeometry x="80" y="300" width="300" height="70" as="geometry"/>
         </mxCell>
-        <mxCell id="sm" value="&lt;b&gt;Mamba SSM résiduel empilé&lt;/b&gt;&lt;br&gt;Modélisation de séquences temporelles" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" vertex="1" parent="sp">
+        <mxCell id="sm" value="&lt;b&gt;Mamba-2 résiduel empilé&lt;/b&gt;&lt;br&gt;Modélisation de séquences temporelles" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" vertex="1" parent="sp">
           <mxGeometry x="100" y="420" width="260" height="60" as="geometry"/>
         </mxCell>
         <mxCell id="so" value="&lt;b&gt;Sortie spatiale&lt;/b&gt;&lt;br&gt;Prédictions de classe de magnitude par region" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=11;shadow=1;" vertex="1" parent="sp">
@@ -58,7 +58,7 @@
         <mxCell id="we" value="&lt;b&gt;Embedding de forme d'onde&lt;/b&gt;&lt;br&gt;CNN + Conv1D" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;shadow=1;" vertex="1" parent="wb">
           <mxGeometry x="50" y="185" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="wm" value="&lt;b&gt;Mamba SSM&lt;/b&gt;&lt;br&gt;Prédiction de classe de magnitude" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" vertex="1" parent="wb">
+        <mxCell id="wm" value="&lt;b&gt;Mamba-2 &lt;/b&gt;&lt;br&gt;Prédiction de classe de magnitude" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;shadow=1;" vertex="1" parent="wb">
           <mxGeometry x="50" y="420" width="200" height="60" as="geometry"/>
         </mxCell>
         <mxCell id="wo" value="&lt;b&gt;Sortie forme d'onde&lt;/b&gt;&lt;br&gt;Classe de magnitude prédite" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#4caf50;fontSize=11;shadow=1;" vertex="1" parent="wb">

@@ -28,7 +28,7 @@ patches_2001.npy
 Shape:
 
 ```
-(5, 512, 512)
+(5, 400, 400)
 ```
 
 Channels:
@@ -55,7 +55,7 @@ stride = 64
 Output shape:
 
 ```
-(N_patches, 5, 64, 64)
+(N_patches, 5, 50, 50)
 ```
 
 
@@ -92,7 +92,7 @@ lat:  32 → 42
 Resolution:
 
 ```
-512 × 512
+400 × 400
 ```
 
 
@@ -180,54 +180,9 @@ years = ceed.get_years()
 ```
 
 
-## Visualization
-
-A notebook is provided for inspecting tensors and patches:
-
-```
-visualize_ceed_tensors.ipynb
-```
-
-The notebook allows visualization of:
-
-```
-5-channel yearly tensors
-patch grids
-individual channels
-```
-
-Example tensor visualization:
-
-```
-(5, 512, 512)
-```
-
-Example patch visualization:
-
-```
-(5, 64, 64)
-```
-
-
 # Design Notes
 
 * Metadata is stored in **Parquet** for fast filtering.
 * Spatial layers use **identical raster transforms** to guarantee alignment.
 * Waveform data is **not loaded locally**; pointer indices allow lazy loading during training.
 * Tensors are saved as `.npy` for fast loading in ML pipelines.
-
----
-
-# Possible Extensions
-
-Future spatial channels may include:
-
-```
-strain rate
-topography
-fault slip rate
-seismic moment release
-10-year sliding seismicity windows
-```
-
-These features can be added as additional tensor channels.

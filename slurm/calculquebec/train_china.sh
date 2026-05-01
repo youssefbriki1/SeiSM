@@ -59,18 +59,18 @@ $VENV_PY -I -c "import numpy; print('numpy OK:', numpy.__version__)"
 
 # ---- Execution ----
 cd "$PROJECT_ROOT"
-echo "[Command] : srun $VENV_PY $MAIN_PY --use_focal_loss  --data_dir $DATA_DIR --wandb_mode offline $*"
+echo "[Command] : srun $VENV_PY $MAIN_PY --model SeiSM --use_focal_loss --data_dir $DATA_DIR --wandb_mode offline $*"
 srun --export=ALL "$VENV_PY" "$MAIN_PY" \
+  --model SeiSM \
   --data_dir "$DATA_DIR" \
-  --save_path "$SAVE_PATH" \
   --use_focal_loss \
   --wandb_mode offline \
-  --train_target_year_start 1979 \
-  --epochs 300 \
-  --lr 1e-5 \
-  --weight_decay 1e-3 \
+  --train_target_year_start 1987 \
+  --epochs 200 \
+  --lr 1e-4 \
+  --weight_decay 1e-4 \
   --batch_size 4 \
-  --grad_accum_steps 4 \
+  --grad_accum_steps 8 \
   --focal_gamma 3.0 \
   --focal_alpha 1.0 4.0 15.0 78.0 \
   --train_features_file "training_output.pickle" \

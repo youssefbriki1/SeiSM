@@ -1,35 +1,30 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=32000
-#SBATCH --gres=gpu:1g.5gb:1
-#SBATCH --partition=nodegpupool
+#SBATCH --gpus-per-node=1
 #SBATCH --nodes=1
 #SBATCH --time=4:00:00
-#SBATCH --output=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.out
-#SBATCH --error=/project/60004/fauverick/ift3710/slurm_logs/%x-%j.err
+#SBATCH --output=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.out
+#SBATCH --error=/scratch/brikiyou/ift3710/slurm_logs/%x-%j.err
 #SBATCH --export=NONE          
 set -euo pipefail
 
 module --force purge
-module load StdEnv/2023
-module load gcc/12.3
-module load cuda/12.6
-module load arrow/22.0.0
+module load StdEnv/2023 gcc/12.3 python/3.10 arrow/14
 
 # ---- Tell Triton / pip to use the module-loaded GCC, not /bin/gcc ----
 export CC=$(which gcc)
 export CXX=$(which g++)
-export CUDA_HOME=${EBROOTCUDA:-$CUDA_HOME}
-export HOME=${HOME:-/project/60004/fauverick}
-echo "[env] CC=$CC  CXX=$CXX  CUDA_HOME=$CUDA_HOME"
+export HOME=${HOME:-/scratch/brikiyou}
+echo "[env] CC=$CC  CXX=$CXX"
 
 # ---- Clear stale Triton JIT cache (may have cached /bin/gcc path) ----
-rm -rf $HOME/.triton/cache 2>/dev/null || true
-rm -rf /tmp/triton_* 2>/dev/null || true
+rm -rf /scratch/brikiyou/triton_cache 2>/dev/null || true
+export TRITON_CACHE_DIR=/scratch/brikiyou/triton_cache
 
 # ---- Project paths ----
-PROJECT_ROOT=/project/60004/fauverick/ift3710
-VENV_PY=$PROJECT_ROOT/.venv/bin/python
+PROJECT_ROOT=/scratch/brikiyou/ift3710
+VENV_PY=$PROJECT_ROOT/env/py1013/bin/python
 DATA_DIR=$PROJECT_ROOT/src/data-processing/california/data/CEED/processed
 MAIN_PY=$PROJECT_ROOT/src/main_mutimodal.py
 LOG_DIR=$PROJECT_ROOT/slurm_logs
@@ -38,8 +33,8 @@ mkdir -p "$LOG_DIR" "$PROJECT_ROOT/.pycache" "$PROJECT_ROOT/wandb"
 mkdir -p "$PROJECT_ROOT/.cache/huggingface"
 
 # ---- Allow ComputeCanada LMOD to manage Python environment variables ----
-# unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
-# export PYTHONNOUSERSITE=1
+unset PYTHONHOME PYTHONPATH PYTHONUSERBASE
+export PYTHONNOUSERSITE=1
 export PYTHONPYCACHEPREFIX=$PROJECT_ROOT/.pycache
 
 # ---- Set WandB log directory under $PROJECT_ROOT ----
@@ -58,13 +53,18 @@ $VENV_PY -I -c "import numpy; print('numpy OK:', numpy.__version__)"
 
 # ---- Execution ----
 cd "$PROJECT_ROOT"
-echo "[Command] : srun $VENV_PY $MAIN_PY --use_focal_loss  --data_dir $DATA_DIR --wandb_mode offline $*"
+echo "[Command] : srun $VENV_PY $MAIN_PY --model safenet_ssm --use_focal_loss --data_dir $DATA_DIR --wandb_mode offline $*"
 srun --export=ALL "$VENV_PY" "$MAIN_PY" \
+  --model safenet_ssm \
   --data_dir "$DATA_DIR" \
   --use_focal_loss \
   --wandb_mode offline \
   --train_target_year_start 1987 \
-  --epochs 50 \
-  --lr 1e-4 \
+  --epochs 500 \
+  --lr 1e-5 \
+  --weight_decay 1e-3 \
   --batch_size 4 \
+  --grad_accum_steps 8 \
+  --focal_gamma 3.0 \
+  --focal_alpha 1.0 4.0 15.0 78.0 \
   "$@"

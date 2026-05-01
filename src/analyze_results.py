@@ -6,22 +6,37 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
+plt.rcParams.update({
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.grid": True,
+    "grid.linestyle": "--",
+    "grid.alpha": 0.6,
+    "font.size": 11,
+    "axes.titlesize": 13,
+    "axes.labelsize": 11,
+    "legend.fontsize": 10,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+})
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-MODELS = ["mamba2", "bi_lstm", "transformer"]
-SIZES  = ["xs", "s", "m", "l"]
+MODELS = ["bi_lstm", "mamba2", "transformer"]
+SIZES  = ["l"]
 SEEDS  = [42, 1, 2, 3, 4]
 SIZE_ORDER = {s: i for i, s in enumerate(SIZES)}
 
 COLORS = {
-    "mamba2":      "#ff7f0e",
     "bi_lstm":     "#1f77b4",
+    "mamba2":      "#ff7f0e",
     "transformer": "#2ca02c",
 }
 DISPLAY_NAMES = {
+    "bi_lstm":     "BiLSTM (RNN)",
     "mamba2":      "Mamba2 (SSM)",
-    "bi_lstm":     "Bi-LSTM",
     "transformer": "Transformer",
 }
 
@@ -101,6 +116,34 @@ def load_results(results_dir: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def load_epoch_data(results_dir: Path) -> pd.DataFrame:
+    rows = []
+    for model in MODELS:
+        for size in SIZES:
+            for seed in SEEDS:
+                path = results_dir / f"{model}_{size}_seed{seed}.json"
+                if not path.exists():
+                    continue
+                try:
+                    with open(path) as f:
+                        data = json.load(f)
+                except Exception:
+                    continue
+                for ep in data.get("epochs", []):
+                    rows.append({
+                        "model": model,
+                        "size": size,
+                        "seed": seed,
+                        "epoch": ep.get("epoch"),
+                        "train_loss": ep.get("train_loss"),
+                        "val_loss": ep.get("val_loss"),
+                        "val_mae": ep.get("val_mae"),
+                        "val_r2": ep.get("val_r2"),
+                        "epoch_time_seconds": ep.get("epoch_time_seconds"),
+                    })
+    return pd.DataFrame(rows)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Aggregation
 # ──────────────────────────────────────────────────────────────────────────────
@@ -126,12 +169,13 @@ def aggregate(df: pd.DataFrame) -> pd.DataFrame:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def print_and_save_table(agg: pd.DataFrame, raw: pd.DataFrame, output_dir: Path) -> None:
-    print("\n" + "=" * 80)
+    print("\n" + "=" * 85)
     print("AGGREGATED RESULTS (mean ± std over seeds)")
-    print("=" * 80)
-    header = f"{'Model':<18} {'Size':<5} {'n':>3}  {'ValMAE':>10}  {'ValR2':>10}  {'GPU(MB)':>10}  {'Time(s)':>10}  {'BestEpoch':>10}"
+    print("=" * 85)
+    header = (f"{'Model':<18} {'Size':<5} {'n':>3}  {'ValMAE':>12}  {'ValR2':>10}"
+              f"  {'GPU(MB)':>10}  {'Time(s)':>12}  {'BestEpoch':>10}")
     print(header)
-    print("-" * 80)
+    print("-" * 85)
     for _, r in agg.iterrows():
         def fmt(m, s, w=10):
             if np.isnan(m):
@@ -140,13 +184,13 @@ def print_and_save_table(agg: pd.DataFrame, raw: pd.DataFrame, output_dir: Path)
 
         print(
             f"{DISPLAY_NAMES[r['model']]:<18} {r['size']:<5} {r['n_seeds']:>3}  "
-            f"{fmt(r['mean_best_val_mae'], r['std_best_val_mae'])}  "
+            f"{fmt(r['mean_best_val_mae'], r['std_best_val_mae'], 12)}  "
             f"{fmt(r['mean_val_r2'], r['std_val_r2'])}  "
             f"{fmt(r['mean_peak_gpu_memory_mb'], r['std_peak_gpu_memory_mb'])}  "
-            f"{fmt(r['mean_total_time_seconds'], r['std_total_time_seconds'])}  "
+            f"{fmt(r['mean_total_time_seconds'], r['std_total_time_seconds'], 12)}  "
             f"{fmt(r['mean_best_epoch'], r['std_best_epoch'])}"
         )
-    print("=" * 80 + "\n")
+    print("=" * 85 + "\n")
 
     csv_cols = ["model", "size", "seed", "best_val_mae", "val_r2",
                 "peak_gpu_memory_mb", "total_time_seconds", "best_epoch"]
@@ -155,225 +199,278 @@ def print_and_save_table(agg: pd.DataFrame, raw: pd.DataFrame, output_dir: Path)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Shared Plot Helpers
+# Plot 1 — Learning Curves (Val MAE & Train Loss per Epoch)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _sorted_agg(agg: pd.DataFrame) -> pd.DataFrame:
-    agg = agg.copy()
-    agg["_size_order"] = agg["size"].map(SIZE_ORDER)
-    return agg.sort_values(["_size_order", "model"]).drop(columns="_size_order")
-
-
-def _grouped_bar(agg: pd.DataFrame, mean_col: str, std_col: str,
-                 title: str, ylabel: str, output_path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(14, 7))
-    width = 0.25
-    offsets = {m: (i - 1) * width for i, m in enumerate(MODELS)}
-    x = np.arange(len(SIZES))
-
-    for model in MODELS:
-        sub = _sorted_agg(agg[agg["model"] == model])
-        means = []
-        stds  = []
-        for size in SIZES:
-            row = sub[sub["size"] == size]
-            means.append(row[mean_col].values[0] if len(row) else np.nan)
-            stds.append(row[std_col].values[0]   if len(row) else np.nan)
-
-        means = np.array(means, dtype=float)
-        stds  = np.array(stds,  dtype=float)
-        valid = ~np.isnan(means)
-        if not valid.any():
-            continue
-
-        ax.bar(
-            x[valid] + offsets[model],
-            means[valid],
-            width,
-            yerr=stds[valid],
-            label=DISPLAY_NAMES[model],
-            color=COLORS[model],
-            edgecolor="black",
-            alpha=0.85,
-            capsize=4,
-        )
-
-    ax.set_title(title, fontsize=14, fontweight="bold")
-    ax.set_xlabel("Model Size Tier", fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(SIZES, fontsize=11)
-    ax.legend(fontsize=11)
-    ax.grid(axis="y", linestyle="--", alpha=0.7)
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300)
-    plt.close()
-    print(f"Saved: {output_path}")
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Plot 1 — Val MAE Comparison
-# ──────────────────────────────────────────────────────────────────────────────
-
-def plot_val_mae_comparison(agg: pd.DataFrame, output_dir: Path) -> None:
-    _grouped_bar(
-        agg,
-        mean_col="mean_best_val_mae",
-        std_col="std_best_val_mae",
-        title="Validation MAE by Model and Size (mean ± std over 5 seeds)",
-        ylabel="Mean Val MAE",
-        output_path=output_dir / "val_mae_comparison.png",
+def plot_learning_curves(epoch_df: pd.DataFrame, output_dir: Path) -> None:
+    size = "l"
+    fig, axes = plt.subplots(1, len(MODELS), figsize=(18, 5), sharey=False)
+    fig.suptitle(
+        "Learning Curves — Mean ± Std over 5 Seeds (Size L)",
+        fontsize=14, fontweight="bold", y=1.02,
     )
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Plot 2 — Scaling Curve
-# ──────────────────────────────────────────────────────────────────────────────
-
-def plot_scaling_curve(agg: pd.DataFrame, output_dir: Path) -> None:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    x = np.arange(len(SIZES))
-
-    for model in MODELS:
-        sub = _sorted_agg(agg[agg["model"] == model])
-        means = []
-        stds  = []
-        for size in SIZES:
-            row = sub[sub["size"] == size]
-            means.append(row["mean_best_val_mae"].values[0] if len(row) else np.nan)
-            stds.append(row["std_best_val_mae"].values[0]   if len(row) else np.nan)
-
-        means = np.array(means, dtype=float)
-        stds  = np.array(stds,  dtype=float)
-        valid = ~np.isnan(means)
-        if valid.sum() < 2:
-            warnings.warn(f"Skipping scaling curve for {model}: fewer than 2 valid size points.")
+    for ax, model in zip(axes, MODELS):
+        sub = epoch_df[(epoch_df["model"] == model) & (epoch_df["size"] == size)]
+        if sub.empty:
+            ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
             continue
 
-        ax.plot(x[valid], means[valid], marker="o", linewidth=2,
-                label=DISPLAY_NAMES[model], color=COLORS[model])
-        ax.fill_between(x[valid], means[valid] - stds[valid], means[valid] + stds[valid],
-                        alpha=0.2, color=COLORS[model])
+        color = COLORS[model]
+        epochs = sorted(sub["epoch"].unique())
+        grouped = sub.groupby("epoch")
 
-    ax.set_title("Val MAE Scaling Curve (mean ± std over 5 seeds)", fontsize=14, fontweight="bold")
-    ax.set_xlabel("Model Size", fontsize=12)
-    ax.set_ylabel("Mean Val MAE", fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(SIZES, fontsize=11)
-    ax.legend(fontsize=11)
-    ax.grid(linestyle="--", alpha=0.7)
+        for metric, label, ls, alpha_line in [
+            ("train_loss", "Train Loss",  "-",  1.0),
+            ("val_mae",    "Val MAE",     "--", 0.85),
+        ]:
+            means = np.array([grouped.get_group(e)[metric].mean() for e in epochs])
+            stds  = np.array([grouped.get_group(e)[metric].std()  for e in epochs])
+            ax.plot(epochs, means, ls=ls, color=color, linewidth=2.2,
+                    label=label, alpha=alpha_line)
+            ax.fill_between(epochs, means - stds, means + stds,
+                            alpha=0.18, color=color)
+
+        ax.set_title(DISPLAY_NAMES[model], fontweight="bold", color=color)
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss / MAE")
+        ax.legend()
+        ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=6))
+
     plt.tight_layout()
-    path = output_dir / "scaling_curve.png"
+    path = output_dir / "learning_curves.png"
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved: {path}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plot 2 — Val MAE Comparison (with seed scatter)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def plot_val_mae_comparison(raw: pd.DataFrame, agg: pd.DataFrame, output_dir: Path) -> None:
+    size = "l"
+    models_present = [m for m in MODELS
+                      if not agg[(agg["model"] == m) & (agg["size"] == size)]["mean_best_val_mae"].isna().all()]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(models_present))
+    width = 0.45
+
+    for i, model in enumerate(models_present):
+        row = agg[(agg["model"] == model) & (agg["size"] == size)].iloc[0]
+        mean_v = row["mean_best_val_mae"]
+        std_v  = row["std_best_val_mae"]
+        color  = COLORS[model]
+
+        ax.bar(i, mean_v, width, yerr=std_v, color=color, edgecolor="black",
+               alpha=0.80, capsize=6, label=DISPLAY_NAMES[model], zorder=2)
+
+        # Individual seed dots
+        seed_vals = raw[(raw["model"] == model) & (raw["size"] == size)]["best_val_mae"].dropna()
+        jitter = np.random.default_rng(0).uniform(-0.08, 0.08, size=len(seed_vals))
+        ax.scatter(i + jitter, seed_vals, color="black", s=30, zorder=3, alpha=0.7)
+
+    # Annotate % reduction vs worst
+    worst = max(
+        agg[(agg["model"] == m) & (agg["size"] == size)]["mean_best_val_mae"].values[0]
+        for m in models_present
+        if not np.isnan(agg[(agg["model"] == m) & (agg["size"] == size)]["mean_best_val_mae"].values[0])
+    )
+    for i, model in enumerate(models_present):
+        mean_v = agg[(agg["model"] == model) & (agg["size"] == size)]["mean_best_val_mae"].values[0]
+        std_v  = agg[(agg["model"] == model) & (agg["size"] == size)]["std_best_val_mae"].values[0]
+        pct = (worst - mean_v) / worst * 100
+        label = "ref" if abs(pct) < 0.5 else f"−{pct:.1f}%"
+        ax.text(i, mean_v + std_v + worst * 0.015, label,
+                ha="center", fontsize=11, fontweight="bold", color=COLORS[model])
+
+    ax.set_title("Best Validation MAE by Model — Size L\n(mean ± std, dots = individual seeds)",
+                 fontweight="bold")
+    ax.set_ylabel("Best Val MAE")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DISPLAY_NAMES[m] for m in models_present], fontsize=11)
+    ax.legend(fontsize=10)
+    plt.tight_layout()
+    path = output_dir / "val_mae_comparison.png"
     plt.savefig(path, dpi=300)
     plt.close()
     print(f"Saved: {path}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Plot 3 — Training Time
+# Plot 3 — Clock Time Reduction
 # ──────────────────────────────────────────────────────────────────────────────
 
-def plot_training_time(agg: pd.DataFrame, output_dir: Path) -> None:
-    _grouped_bar(
-        agg,
-        mean_col="mean_total_time_seconds",
-        std_col="std_total_time_seconds",
-        title="Training Time by Model and Size (mean ± std over 5 seeds)",
-        ylabel="Total Training Time (seconds)",
-        output_path=output_dir / "training_time.png",
+def plot_clock_time_reduction(agg: pd.DataFrame, epoch_df: pd.DataFrame, output_dir: Path) -> None:
+    size = "l"
+    models_present = [m for m in MODELS
+                      if not agg[(agg["model"] == m) & (agg["size"] == size)]["mean_total_time_seconds"].isna().all()]
+
+    total_means, total_stds, ep_means, ep_stds = [], [], [], []
+    for model in models_present:
+        row = agg[(agg["model"] == model) & (agg["size"] == size)].iloc[0]
+        total_means.append(row["mean_total_time_seconds"])
+        total_stds.append(row["std_total_time_seconds"])
+        sub = epoch_df[(epoch_df["model"] == model) & (epoch_df["size"] == size)]
+        ep_means.append(sub["epoch_time_seconds"].mean())
+        ep_stds.append(sub["epoch_time_seconds"].std())
+
+    slowest_total = max(total_means)
+    slowest_ep    = max(ep_means)
+    colors = [COLORS[m] for m in models_present]
+    x = np.arange(len(models_present))
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle(
+        "Wall-Clock Time Reduction vs. Slowest Baseline (Size L, mean ± std over 5 seeds)",
+        fontsize=13, fontweight="bold",
     )
 
+    # Left: per-epoch time
+    ax = axes[0]
+    ax.bar(x, ep_means, yerr=ep_stds, color=colors, edgecolor="black",
+           alpha=0.85, capsize=6, width=0.5, zorder=2)
+    for i, (m, ep, es) in enumerate(zip(models_present, ep_means, ep_stds)):
+        pct = (slowest_ep - ep) / slowest_ep * 100
+        lbl = "ref" if abs(pct) < 0.5 else f"−{pct:.0f}%"
+        ax.text(i, ep + es + slowest_ep * 0.015, lbl,
+                ha="center", fontsize=12, fontweight="bold", color=COLORS[m])
+    ax.set_xticks(x)
+    ax.set_xticklabels([DISPLAY_NAMES[m] for m in models_present])
+    ax.set_ylabel("Mean Epoch Time (s)")
+    ax.set_title("Per-Epoch Wall-Clock Time", fontweight="bold")
+
+    # Right: total training time (in hours)
+    ax = axes[1]
+    total_h  = [t / 3600 for t in total_means]
+    total_hs = [t / 3600 for t in total_stds]
+    ax.bar(x, total_h, yerr=total_hs, color=colors, edgecolor="black",
+           alpha=0.85, capsize=6, width=0.5, zorder=2)
+    for i, (m, th, ths, tt, ts) in enumerate(zip(models_present, total_h, total_hs,
+                                                   total_means, total_stds)):
+        pct = (slowest_total - tt) / slowest_total * 100
+        lbl = "ref" if abs(pct) < 0.5 else f"−{pct:.0f}%"
+        ax.text(i, th + ths + (slowest_total / 3600) * 0.015, lbl,
+                ha="center", fontsize=12, fontweight="bold", color=COLORS[m])
+    ax.set_xticks(x)
+    ax.set_xticklabels([DISPLAY_NAMES[m] for m in models_present])
+    ax.set_ylabel("Total Training Time (hours)")
+    ax.set_title("Total Training Time", fontweight="bold")
+
+    plt.tight_layout()
+    path = output_dir / "clock_time_reduction.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    print(f"Saved: {path}")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Plot 4 — GPU Memory
+# Plot 4 — Epoch Time Curve (time per epoch over training)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def plot_gpu_memory(agg: pd.DataFrame, output_dir: Path) -> None:
-    if agg["mean_peak_gpu_memory_mb"].isna().all():
-        print("WARNING: No GPU memory data found in any result file. Skipping gpu_memory.png.")
-        return
-    _grouped_bar(
-        agg,
-        mean_col="mean_peak_gpu_memory_mb",
-        std_col="std_peak_gpu_memory_mb",
-        title="Peak GPU Memory by Model and Size (mean ± std over 5 seeds)",
-        ylabel="Peak GPU Memory (MB)",
-        output_path=output_dir / "gpu_memory.png",
-    )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Plot 5 — Convergence Epochs + Step Reduction %
-# ──────────────────────────────────────────────────────────────────────────────
-
-def plot_convergence_epochs(agg: pd.DataFrame, output_dir: Path) -> None:
-    fig, ax = plt.subplots(figsize=(14, 7))
-    width = 0.25
-    offsets = {m: (i - 1) * width for i, m in enumerate(MODELS)}
-    x = np.arange(len(SIZES))
-
-    bar_info = {}  # (size_idx, model) -> (x_pos, bar_height, std)
+def plot_epoch_time_curve(epoch_df: pd.DataFrame, output_dir: Path) -> None:
+    size = "l"
+    fig, ax = plt.subplots(figsize=(11, 5))
 
     for model in MODELS:
-        sub = _sorted_agg(agg[agg["model"] == model])
-        means = []
-        stds  = []
-        for size in SIZES:
-            row = sub[sub["size"] == size]
-            means.append(row["mean_best_epoch"].values[0] if len(row) else np.nan)
-            stds.append(row["std_best_epoch"].values[0]   if len(row) else np.nan)
-
-        means = np.array(means, dtype=float)
-        stds  = np.array(stds,  dtype=float)
-
-        for si, size in enumerate(SIZES):
-            if not np.isnan(means[si]):
-                bar_info[(si, model)] = (x[si] + offsets[model], means[si], stds[si])
-
-        valid = ~np.isnan(means)
-        if not valid.any():
+        sub = epoch_df[(epoch_df["model"] == model) & (epoch_df["size"] == size)]
+        if sub.empty:
             continue
+        color  = COLORS[model]
+        epochs = sorted(sub["epoch"].unique())
+        grouped = sub.groupby("epoch")
+        means = np.array([grouped.get_group(e)["epoch_time_seconds"].mean() for e in epochs])
+        stds  = np.array([grouped.get_group(e)["epoch_time_seconds"].std()  for e in epochs])
+        ax.plot(epochs, means, color=color, linewidth=2, label=DISPLAY_NAMES[model])
+        ax.fill_between(epochs, means - stds, means + stds, alpha=0.18, color=color)
 
-        ax.bar(
-            x[valid] + offsets[model],
-            means[valid],
-            width,
-            yerr=stds[valid],
-            label=DISPLAY_NAMES[model],
-            color=COLORS[model],
-            edgecolor="black",
-            alpha=0.85,
-            capsize=4,
-        )
-
-    # Annotate step reduction % vs slowest model per size
-    for si, size in enumerate(SIZES):
-        size_means = {
-            m: bar_info[(si, m)][1]
-            for m in MODELS if (si, m) in bar_info
-        }
-        if len(size_means) < 2:
-            continue
-        slowest = max(size_means.values())
-        for model, mean_val in size_means.items():
-            if np.isnan(slowest) or slowest == 0:
-                continue
-            pct = (slowest - mean_val) / slowest * 100
-            x_pos, bar_h, bar_std = bar_info[(si, model)]
-            label = "ref" if abs(pct) < 0.5 else f"-{pct:.0f}%"
-            ax.text(x_pos, bar_h + (bar_std if not np.isnan(bar_std) else 0) + 0.3,
-                    label, ha="center", va="bottom", fontsize=7.5, color="black")
-
-    ax.set_title("Convergence Speed — Epoch of Best Val MAE (mean ± std over 5 seeds)",
-                 fontsize=14, fontweight="bold")
-    ax.set_xlabel("Model Size Tier", fontsize=12)
-    ax.set_ylabel("Mean Epoch of Best Val MAE", fontsize=12)
-    ax.set_xticks(x)
-    ax.set_xticklabels(SIZES, fontsize=11)
-    ax.legend(fontsize=11)
-    ax.grid(axis="y", linestyle="--", alpha=0.7)
+    ax.set_title("Epoch Wall-Clock Time over Training — Size L\n(mean ± std over 5 seeds)",
+                 fontweight="bold")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Epoch Time (s)")
+    ax.legend()
+    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=6))
     plt.tight_layout()
-    path = output_dir / "convergence_epochs.png"
+    path = output_dir / "epoch_time_curve.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    print(f"Saved: {path}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plot 5 — GPU Memory
+# ──────────────────────────────────────────────────────────────────────────────
+
+def plot_gpu_memory(raw: pd.DataFrame, agg: pd.DataFrame, output_dir: Path) -> None:
+    if agg["mean_peak_gpu_memory_mb"].isna().all():
+        print("WARNING: No GPU memory data. Skipping gpu_memory.png.")
+        return
+
+    size = "l"
+    models_present = [m for m in MODELS
+                      if not agg[(agg["model"] == m) & (agg["size"] == size)]["mean_peak_gpu_memory_mb"].isna().all()]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(models_present))
+
+    for i, model in enumerate(models_present):
+        row = agg[(agg["model"] == model) & (agg["size"] == size)].iloc[0]
+        mean_v = row["mean_peak_gpu_memory_mb"]
+        std_v  = row["std_peak_gpu_memory_mb"]
+        ax.bar(i, mean_v / 1024, 0.5, yerr=std_v / 1024,
+               color=COLORS[model], edgecolor="black", alpha=0.80, capsize=6,
+               label=DISPLAY_NAMES[model], zorder=2)
+
+        seed_vals = raw[(raw["model"] == model) & (raw["size"] == size)]["peak_gpu_memory_mb"].dropna()
+        jitter = np.random.default_rng(1).uniform(-0.08, 0.08, size=len(seed_vals))
+        ax.scatter(i + jitter, seed_vals / 1024, color="black", s=30, zorder=3, alpha=0.7)
+
+    ax.set_title("Peak GPU Memory by Model — Size L\n(mean ± std, dots = individual seeds)",
+                 fontweight="bold")
+    ax.set_ylabel("Peak GPU Memory (GB)")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DISPLAY_NAMES[m] for m in models_present], fontsize=11)
+    ax.legend()
+    plt.tight_layout()
+    path = output_dir / "gpu_memory.png"
+    plt.savefig(path, dpi=300)
+    plt.close()
+    print(f"Saved: {path}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Plot 6 — Val R² Comparison
+# ──────────────────────────────────────────────────────────────────────────────
+
+def plot_val_r2(raw: pd.DataFrame, agg: pd.DataFrame, output_dir: Path) -> None:
+    size = "l"
+    models_present = [m for m in MODELS
+                      if not agg[(agg["model"] == m) & (agg["size"] == size)]["mean_val_r2"].isna().all()]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    x = np.arange(len(models_present))
+
+    for i, model in enumerate(models_present):
+        row = agg[(agg["model"] == model) & (agg["size"] == size)].iloc[0]
+        mean_v = row["mean_val_r2"]
+        std_v  = row["std_val_r2"]
+        ax.bar(i, mean_v, 0.45, yerr=std_v,
+               color=COLORS[model], edgecolor="black", alpha=0.80, capsize=6,
+               label=DISPLAY_NAMES[model], zorder=2)
+
+        seed_vals = raw[(raw["model"] == model) & (raw["size"] == size)]["val_r2"].dropna()
+        jitter = np.random.default_rng(2).uniform(-0.08, 0.08, size=len(seed_vals))
+        ax.scatter(i + jitter, seed_vals, color="black", s=30, zorder=3, alpha=0.7)
+
+    ax.set_title("Best Validation R² by Model — Size L\n(mean ± std, dots = individual seeds)",
+                 fontweight="bold")
+    ax.set_ylabel("Val R²")
+    ax.set_xticks(x)
+    ax.set_xticklabels([DISPLAY_NAMES[m] for m in models_present], fontsize=11)
+    ax.legend()
+    plt.tight_layout()
+    path = output_dir / "val_r2_comparison.png"
     plt.savefig(path, dpi=300)
     plt.close()
     print(f"Saved: {path}")
@@ -389,20 +486,22 @@ def main() -> None:
     output_dir  = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_df = load_results(results_dir)
+    raw_df   = load_results(results_dir)
+    epoch_df = load_epoch_data(results_dir)
+
     n_found = int(raw_df["best_val_mae"].notna().sum())
     total   = len(MODELS) * len(SIZES) * len(SEEDS)
     print(f"Loaded {n_found} / {total} result files.")
 
     agg_df = aggregate(raw_df)
-
     print_and_save_table(agg_df, raw_df, output_dir)
 
-    plot_val_mae_comparison(agg_df, output_dir)
-    plot_scaling_curve(agg_df, output_dir)
-    plot_training_time(agg_df, output_dir)
-    plot_gpu_memory(agg_df, output_dir)
-    plot_convergence_epochs(agg_df, output_dir)
+    plot_learning_curves(epoch_df, output_dir)
+    plot_val_mae_comparison(raw_df, agg_df, output_dir)
+    plot_clock_time_reduction(agg_df, epoch_df, output_dir)
+    plot_epoch_time_curve(epoch_df, output_dir)
+    plot_gpu_memory(raw_df, agg_df, output_dir)
+    plot_val_r2(raw_df, agg_df, output_dir)
 
     print(f"\nAll outputs saved to {output_dir}")
 

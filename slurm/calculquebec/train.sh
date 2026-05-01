@@ -58,13 +58,13 @@ $VENV_PY -I -c "import numpy; print('numpy OK:', numpy.__version__)"
 
 # ---- Execution ----
 cd "$PROJECT_ROOT"
-echo "[Command] : srun $VENV_PY $MAIN_PY --data_dir $DATA_DIR --wandb_mode offline $*"
+echo "[Command] : srun $VENV_PY $MAIN_PY --use_focal_loss  --data_dir $DATA_DIR --wandb_mode offline $*"
 srun --export=ALL "$VENV_PY" "$MAIN_PY" \
   --data_dir "$DATA_DIR" \
+  --use_focal_loss \
   --wandb_mode offline \
   --train_target_year_start 1987 \
   --epochs 50 \
   --lr 1e-4 \
-  --weight_decay 1e-4 \
   --batch_size 4 \
   "$@"
